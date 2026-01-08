@@ -64,6 +64,20 @@ A Fabric 1.21.8 client-side mod that analyzes and tracks dyed leather armor colo
 - View color matches and Delta E values
 - Sort by various criteria
 
+### Collection Statistics
+
+View detailed statistics about your collection:
+```
+/seymour stats
+```
+
+Shows:
+- **Total pieces** in your collection
+- **By Tier**: T1< (ΔE < 1.0), T1 (1.0-2.0), T2 (2.0-3.0), T3+ (3.0+)
+- **By Type**: Normal colors, fade dyes, custom colors
+- **Special Features**: Pieces with patterns and word matches
+- **Duplicates**: Unique hex codes with multiple pieces
+
 ### Custom Colors
 
 Add your own target colors:

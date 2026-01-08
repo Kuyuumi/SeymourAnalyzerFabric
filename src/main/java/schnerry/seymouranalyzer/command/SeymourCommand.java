@@ -1,9 +1,13 @@
 package schnerry.seymouranalyzer.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.LiteralMessage;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 import schnerry.seymouranalyzer.config.ModConfig;
 import schnerry.seymouranalyzer.data.ArmorPiece;
@@ -103,9 +107,6 @@ public class SeymourCommand {
             .then(literal("patterns")
                 .executes(SeymourCommand::openPatternMatchesGUI))
 
-            // /seymour test - open test GUI (debug)
-            .then(literal("test")
-                .executes(SeymourCommand::openTestGUI))
 
             // /seymour config - open config GUI
             .then(literal("config")
@@ -365,8 +366,118 @@ public class SeymourCommand {
     }
 
     private static int showStats(CommandContext<FabricClientCommandSource> ctx) {
-        // TODO: Implement statistics calculation
-        ctx.getSource().sendFeedback(Text.literal("§a[Seymour Analyzer] §7Stats command - to be implemented"));
+        var collection = CollectionManager.getInstance().getCollection();
+
+        if (collection.isEmpty()) {
+            ctx.getSource().sendFeedback(Text.literal("§a[Seymour Analyzer] §7Collection is empty! Start scanning to add pieces."));
+            return 1;
+        }
+
+        // Count pieces by tier
+        int t0Count = 0; // T1< (ΔE < 1.0)
+        int t1Count = 0; // T1 (1.0 ≤ ΔE < 2.0)
+        int t2Count = 0; // T2 (2.0 ≤ ΔE < 3.0)
+        int t3PlusCount = 0; // T3+ (ΔE ≥ 3.0)
+        int noAnalysisCount = 0;
+
+        // Count fade dyes and custom colors
+        int fadeDyeCount = 0;
+        int customColorCount = 0;
+        int normalColorCount = 0;
+
+        // Count patterns and words
+        int withPattern = 0;
+        int withWord = 0;
+
+        // Track duplicates (same hex, different UUID)
+        java.util.Map<String, Integer> hexCounts = new java.util.HashMap<>();
+
+        for (var piece : collection.values()) {
+            // Count by tier
+            var bestMatch = piece.getBestMatch();
+            if (bestMatch != null) {
+                int tier = bestMatch.tier;
+                if (tier == 0) t0Count++;
+                else if (tier == 1) t1Count++;
+                else if (tier == 2) t2Count++;
+                else t3PlusCount++;
+
+                // Count by type
+                if (bestMatch.colorName != null) {
+                    if (bestMatch.colorName.contains(" - Stage ")) {
+                        fadeDyeCount++;
+                    } else if (ModConfig.getInstance().getCustomColors().containsKey(bestMatch.colorName)) {
+                        customColorCount++;
+                    } else {
+                        normalColorCount++;
+                    }
+                }
+            } else {
+                noAnalysisCount++;
+            }
+
+            // Count patterns
+            if (piece.getSpecialPattern() != null && !piece.getSpecialPattern().isEmpty()) {
+                withPattern++;
+            }
+
+            // Count words
+            if (piece.getWordMatch() != null && !piece.getWordMatch().isEmpty()) {
+                withWord++;
+            }
+
+            // Track hex for duplicate detection
+            String hex = piece.getHexcode().toUpperCase();
+            hexCounts.put(hex, hexCounts.getOrDefault(hex, 0) + 1);
+        }
+
+        // Count duplicates
+        int dupeHexCount = 0;
+        int totalDupes = 0;
+        for (var entry : hexCounts.entrySet()) {
+            if (entry.getValue() > 1) {
+                dupeHexCount++;
+                totalDupes += entry.getValue();
+            }
+        }
+
+        // Display statistics
+        ctx.getSource().sendFeedback(Text.literal("§8§m----------------------------------------------------"));
+        ctx.getSource().sendFeedback(Text.literal("§a§l[Seymour Analyzer] §7- Collection Statistics"));
+        ctx.getSource().sendFeedback(Text.literal("§7Total Pieces: §e" + collection.size()));
+        ctx.getSource().sendFeedback(Text.literal(""));
+
+        ctx.getSource().sendFeedback(Text.literal("§7§lBy Tier:"));
+        ctx.getSource().sendFeedback(Text.literal("  §c§lT1< §7(ΔE < 1.0): §e" + t0Count));
+        ctx.getSource().sendFeedback(Text.literal("  §d§lT1 §7(1.0 ≤ ΔE < 2.0): §e" + t1Count));
+        ctx.getSource().sendFeedback(Text.literal("  §6§lT2 §7(2.0 ≤ ΔE < 3.0): §e" + t2Count));
+        ctx.getSource().sendFeedback(Text.literal("  §7§lT3+ §7(ΔE ≥ 3.0): §e" + t3PlusCount));
+        if (noAnalysisCount > 0) {
+            ctx.getSource().sendFeedback(Text.literal("  §8No Analysis: §7" + noAnalysisCount));
+        }
+        ctx.getSource().sendFeedback(Text.literal(""));
+
+        ctx.getSource().sendFeedback(Text.literal("§7§lBy Type:"));
+        ctx.getSource().sendFeedback(Text.literal("  §7Normal Colors: §e" + normalColorCount));
+        ctx.getSource().sendFeedback(Text.literal("  §b§lFade Dyes: §e" + fadeDyeCount));
+        ctx.getSource().sendFeedback(Text.literal("  §2§lCustom Colors: §e" + customColorCount));
+        ctx.getSource().sendFeedback(Text.literal(""));
+
+        ctx.getSource().sendFeedback(Text.literal("§7§lSpecial Features:"));
+        ctx.getSource().sendFeedback(Text.literal("  §5§lPatterns: §e" + withPattern));
+        ctx.getSource().sendFeedback(Text.literal("  §d§lWords: §e" + withWord));
+        ctx.getSource().sendFeedback(Text.literal(""));
+
+        if (dupeHexCount > 0) {
+            ctx.getSource().sendFeedback(Text.literal("§c§lDuplicates:"));
+            ctx.getSource().sendFeedback(Text.literal("  §7Unique hex codes with dupes: §c" + dupeHexCount));
+            ctx.getSource().sendFeedback(Text.literal("  §7Total pieces in dupes: §c" + totalDupes));
+            ctx.getSource().sendFeedback(Text.literal("  §8(Use §c/seymour search <hex> §8to find them)"));
+        } else {
+            ctx.getSource().sendFeedback(Text.literal("§a✓ No duplicate hex codes found!"));
+        }
+
+        ctx.getSource().sendFeedback(Text.literal("§8§m----------------------------------------------------"));
         return 1;
     }
 
@@ -518,39 +629,6 @@ public class SeymourCommand {
         return 1;
     }
 
-    private static int openTestGUI(CommandContext<FabricClientCommandSource> ctx) {
-        ctx.getSource().sendFeedback(Text.literal("§a[Seymour] §7Opening test GUI..."));
-
-        // Try the SIMPLEST possible approach
-        try {
-            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
-
-            if (mc == null) {
-                ctx.getSource().sendError(Text.literal("§c[Seymour] §7MC is null!"));
-                return 0;
-            }
-
-            ctx.getSource().sendFeedback(Text.literal("§a[Seymour] §7MC OK, creating screen..."));
-            schnerry.seymouranalyzer.gui.TestScreen screen = new schnerry.seymouranalyzer.gui.TestScreen();
-
-            if (screen == null) {
-                ctx.getSource().sendError(Text.literal("§c[Seymour] §7Screen is null!"));
-                return 0;
-            }
-
-            ctx.getSource().sendFeedback(Text.literal("§a[Seymour] §7Screen created, setting..."));
-            mc.setScreen(screen);
-
-            ctx.getSource().sendFeedback(Text.literal("§a[Seymour] §7Screen set! Current screen: " + (mc.currentScreen != null ? mc.currentScreen.getClass().getSimpleName() : "null")));
-
-        } catch (Exception e) {
-            ctx.getSource().sendError(Text.literal("§c[Seymour] §7Exception: " + e.getMessage()));
-            e.printStackTrace();
-        }
-
-        return 1;
-    }
-
     private static int searchPieces(CommandContext<FabricClientCommandSource> ctx) {
         try {
             String hexInput = StringArgumentType.getString(ctx, "hex");
@@ -640,7 +718,30 @@ public class SeymourCommand {
 
                 if (!foundChestLocations.isEmpty()) {
                     ctx.getSource().sendFeedback(Text.literal("§a§lFound in " + foundChestLocations.size() + " container(s)!"));
-                    ctx.getSource().sendFeedback(Text.literal("§7Use §e/seymour search clear §7to clear search"));
+
+                    // Build clickable message using ClickEvent.RunCommand record
+                    var style = net.minecraft.text.Style.EMPTY
+                        .withColor(net.minecraft.text.TextColor.fromRgb(0xFFFF55))
+                        .withUnderline(true);
+
+                    try {
+                        // ClickEvent is an interface with nested record implementations
+                        // Use ClickEvent.RunCommand which is a record
+                        var clickEvent = new net.minecraft.text.ClickEvent.RunCommand("/seymour search clear");
+                        style = style.withClickEvent(clickEvent);
+
+                        // HoverEvent.ShowText is also a record
+                        var hoverEvent = new net.minecraft.text.HoverEvent.ShowText(Text.literal("Clear search now"));
+                        style = style.withHoverEvent(hoverEvent);
+                    } catch (Exception e) {
+                        ctx.getSource().sendError(Text.literal("§c[Seymour] Failed to create clickable text: " + e.getMessage()));
+                    }
+
+                    Text clearMessage = Text.literal("§7Use ")
+                        .append(Text.literal("/seymour search clear").setStyle(style))
+                        .append(Text.literal("§7 to clear search"));
+
+                    ctx.getSource().sendFeedback(clearMessage);
                 }
             }
 

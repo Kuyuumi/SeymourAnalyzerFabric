@@ -2,27 +2,29 @@ package schnerry.seymouranalyzer.render;
 
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Manages and renders highlighted block positions in the world
- * Used for showing chest locations with matching armor pieces
- * Ported from ChatTriggers index.js
+ * Manages and renders highlighted block positions in the world.
+ * Renders through walls by temporarily disabling depth test during render.
  */
 public class BlockHighlighter {
     private static BlockHighlighter instance;
     private final List<BlockPos> highlightedBlocks = new ArrayList<>();
 
     private BlockHighlighter() {
-        // Register world render event - BEFORE_DEBUG_RENDER to ensure visibility
-        WorldRenderEvents.BEFORE_DEBUG_RENDER.register(this::renderHighlights);
+        // Use LAST event to render after everything else
+        WorldRenderEvents.LAST.register(this::renderHighlights);
     }
 
     public static BlockHighlighter getInstance() {
@@ -32,92 +34,113 @@ public class BlockHighlighter {
         return instance;
     }
 
-    /**
-     * Add a block position to highlight
-     */
     public void addBlock(BlockPos pos) {
         if (!highlightedBlocks.contains(pos)) {
             highlightedBlocks.add(pos);
         }
     }
 
-    /**
-     * Add multiple block positions at once
-     */
     public void addBlocks(List<BlockPos> positions) {
         for (BlockPos pos : positions) {
             addBlock(pos);
         }
     }
 
-    /**
-     * Clear all highlighted blocks
-     */
     public void clearAll() {
         highlightedBlocks.clear();
     }
 
-    /**
-     * Get the number of highlighted blocks
-     */
-    public int getCount() {
-        return highlightedBlocks.size();
-    }
-
-    /**
-     * Get all highlighted block positions (read-only)
-     */
-    public List<BlockPos> getHighlightedBlocks() {
-        return new ArrayList<>(highlightedBlocks);
-    }
-
-    /**
-     * Check if a specific block is highlighted
-     */
-    public boolean isHighlighted(BlockPos pos) {
-        return highlightedBlocks.contains(pos);
-    }
-
-    /**
-     * Render block highlights in the world
-     * Disables depth test to render through blocks
-     */
     private void renderHighlights(WorldRenderContext context) {
         if (highlightedBlocks.isEmpty()) return;
 
-        try {
-            MatrixStack matrices = context.matrixStack();
-            if (matrices == null) return;
+        MatrixStack matrices = context.matrixStack();
+        if (matrices == null) return;
 
-            Vec3d camera = context.camera().getPos();
-            var consumers = context.consumers();
-            if (consumers == null) return;
+        VertexConsumerProvider.Immediate immediate = context.consumers() instanceof VertexConsumerProvider.Immediate imm
+            ? imm : null;
+        if (immediate == null) return;
 
-            // Disable depth test so highlights render through blocks
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
+        Vec3d camera = context.camera().getPos();
 
-            matrices.push();
-            matrices.translate(-camera.x, -camera.y, -camera.z);
+        matrices.push();
+        matrices.translate(-camera.x, -camera.y, -camera.z);
 
-            // Green color for highlights (RGBA 0-1)
-            float red = 0.0f;
-            float green = 1.0f;
-            float blue = 0.0f;
-            float alpha = 0.7f;
+        Matrix4f positionMatrix = matrices.peek().getPositionMatrix();
 
-            // Draw each highlighted block
-            for (BlockPos pos : highlightedBlocks) {
-                Box box = new Box(pos);
-                net.minecraft.client.render.debug.DebugRenderer.drawBox(matrices, consumers, box, red, green, blue, alpha);
-            }
+        // Green color
+        float red = 0.0f;
+        float green = 1.0f;
+        float blue = 0.0f;
+        float alpha = 1.0f;
 
-            matrices.pop();
+        // Get vertex consumer for lines
+        VertexConsumer consumer = immediate.getBuffer(RenderLayer.getLines());
 
-            // Re-enable depth test
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-        } catch (Exception e) {
-            // Silent fail to avoid spam
+        // Draw all highlights
+        for (BlockPos pos : highlightedBlocks) {
+            drawBoxOutline(consumer, positionMatrix, pos, red, green, blue, alpha);
         }
+
+        // Flush the buffer with depth test disabled so it renders through walls
+        // Save current state
+        boolean depthEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+
+        // Disable depth test before drawing
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+
+        // Force draw the buffered vertices
+        immediate.draw(RenderLayer.getLines());
+
+        // Restore depth test state
+        if (depthEnabled) {
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+        }
+
+        matrices.pop();
+    }
+
+    private void drawBoxOutline(VertexConsumer consumer, Matrix4f matrix, BlockPos pos,
+                                 float red, float green, float blue, float alpha) {
+        float minX = pos.getX();
+        float minY = pos.getY();
+        float minZ = pos.getZ();
+        float maxX = pos.getX() + 1.0f;
+        float maxY = pos.getY() + 1.0f;
+        float maxZ = pos.getZ() + 1.0f;
+
+        // Bottom edges
+        line(consumer, matrix, minX, minY, minZ, maxX, minY, minZ, red, green, blue, alpha);
+        line(consumer, matrix, maxX, minY, minZ, maxX, minY, maxZ, red, green, blue, alpha);
+        line(consumer, matrix, maxX, minY, maxZ, minX, minY, maxZ, red, green, blue, alpha);
+        line(consumer, matrix, minX, minY, maxZ, minX, minY, minZ, red, green, blue, alpha);
+
+        // Top edges
+        line(consumer, matrix, minX, maxY, minZ, maxX, maxY, minZ, red, green, blue, alpha);
+        line(consumer, matrix, maxX, maxY, minZ, maxX, maxY, maxZ, red, green, blue, alpha);
+        line(consumer, matrix, maxX, maxY, maxZ, minX, maxY, maxZ, red, green, blue, alpha);
+        line(consumer, matrix, minX, maxY, maxZ, minX, maxY, minZ, red, green, blue, alpha);
+
+        // Vertical edges
+        line(consumer, matrix, minX, minY, minZ, minX, maxY, minZ, red, green, blue, alpha);
+        line(consumer, matrix, maxX, minY, minZ, maxX, maxY, minZ, red, green, blue, alpha);
+        line(consumer, matrix, maxX, minY, maxZ, maxX, maxY, maxZ, red, green, blue, alpha);
+        line(consumer, matrix, minX, minY, maxZ, minX, maxY, maxZ, red, green, blue, alpha);
+    }
+
+    private void line(VertexConsumer consumer, Matrix4f matrix,
+                      float x1, float y1, float z1, float x2, float y2, float z2,
+                      float r, float g, float b, float a) {
+        // Calculate normal for line
+        float dx = x2 - x1;
+        float dy = y2 - y1;
+        float dz = z2 - z1;
+        float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (len == 0) len = 1;
+        float nx = dx / len;
+        float ny = dy / len;
+        float nz = dz / len;
+
+        consumer.vertex(matrix, x1, y1, z1).color(r, g, b, a).normal(nx, ny, nz);
+        consumer.vertex(matrix, x2, y2, z2).color(r, g, b, a).normal(nx, ny, nz);
     }
 }
-

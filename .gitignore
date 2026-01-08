@@ -24,6 +24,9 @@ classes/
 # Fabric
 run/
 
+# Upstream ChatTriggers module (reference only)
+upstream/
+
 # macOS
 .DS_Store
 .AppleDouble

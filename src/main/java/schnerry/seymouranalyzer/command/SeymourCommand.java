@@ -29,16 +29,19 @@ public class SeymourCommand {
 
             // /seymour toggle <option>
             .then(literal("toggle")
+                .executes(SeymourCommand::showToggleHelp)
                 .then(argument("option", StringArgumentType.word())
                     .executes(SeymourCommand::toggleOption)))
 
             // /seymour add <name> <hex>
             .then(literal("add")
+                .executes(SeymourCommand::showAddHelp)
                 .then(argument("name", StringArgumentType.greedyString())
                     .executes(SeymourCommand::addCustomColor)))
 
             // /seymour remove <name>
             .then(literal("remove")
+                .executes(SeymourCommand::showRemoveHelp)
                 .then(argument("name", StringArgumentType.greedyString())
                     .executes(SeymourCommand::removeCustomColor)))
 
@@ -48,6 +51,7 @@ public class SeymourCommand {
 
             // /seymour word add <word> <pattern>
             .then(literal("word")
+                .executes(SeymourCommand::showWordHelp)
                 .then(literal("add")
                     .then(argument("word", StringArgumentType.word())
                         .then(argument("pattern", StringArgumentType.word())
@@ -58,9 +62,11 @@ public class SeymourCommand {
                 .then(literal("list")
                     .executes(SeymourCommand::listWords)))
 
-            // /seymour clear
+            // /seymour clear - requires confirmation
             .then(literal("clear")
-                .executes(SeymourCommand::clearCollection))
+                .executes(SeymourCommand::clearCollectionWarning)
+                .then(literal("sure")
+                    .executes(SeymourCommand::clearCollection)))
 
             // /seymour stats
             .then(literal("stats")
@@ -70,15 +76,9 @@ public class SeymourCommand {
             .then(literal("resetpos")
                 .executes(SeymourCommand::resetPosition))
 
-            // /seymour scan start
-            .then(literal("scan")
-                .then(literal("start")
-                    .executes(SeymourCommand::startScan))
-                .then(literal("stop")
-                    .executes(SeymourCommand::stopScan)))
-
             // /seymour scan start/stop
             .then(literal("scan")
+                .executes(SeymourCommand::showScanHelp)
                 .then(literal("start")
                     .executes(SeymourCommand::startScan))
                 .then(literal("stop")
@@ -86,18 +86,29 @@ public class SeymourCommand {
 
             // /seymour export start/stop
             .then(literal("export")
+                .executes(SeymourCommand::showExportHelp)
                 .then(literal("start")
                     .executes(SeymourCommand::startExport))
                 .then(literal("stop")
                     .executes(SeymourCommand::stopExport)))
 
-            // /seymour db - open database GUI
+            // /seymour db [search] - open database GUI with optional search
             .then(literal("db")
-                .executes(SeymourCommand::openDatabaseGUI))
+                .executes(SeymourCommand::openDatabaseGUI)
+                .then(argument("search", StringArgumentType.greedyString())
+                    .executes(SeymourCommand::openDatabaseGUIWithSearch)))
 
             // /seymour sets - open armor checklist GUI
             .then(literal("sets")
                 .executes(SeymourCommand::openChecklistGUI))
+
+            // /seymour checklist - alias for sets
+            .then(literal("checklist")
+                .executes(SeymourCommand::openChecklistGUI))
+
+            // /seymour bestsets - open best matching sets GUI
+            .then(literal("bestsets")
+                .executes(SeymourCommand::openBestSetsGUI))
 
             // /seymour words - open word matches GUI
             .then(literal("words")
@@ -115,6 +126,7 @@ public class SeymourCommand {
             // /seymour search <hex> - search for pieces with specific hex code
             // /seymour search clear - clear search highlights
             .then(literal("search")
+                .executes(SeymourCommand::showSearchHelp)
                 .then(literal("clear")
                     .executes(SeymourCommand::clearSearch))
                 .then(argument("hex", StringArgumentType.greedyString())
@@ -231,12 +243,80 @@ public class SeymourCommand {
         return 1;
     }
 
+    private static int showToggleHelp(CommandContext<FabricClientCommandSource> ctx) {
+        ctx.getSource().sendFeedback(Text.literal("§c[Seymour] §7Usage: §f/seymour toggle <option>"));
+        ctx.getSource().sendFeedback(Text.literal("§7Available options:"));
+        ctx.getSource().sendFeedback(Text.literal("  §einfobox §8- Toggle info box display"));
+        ctx.getSource().sendFeedback(Text.literal("  §ehighlights §8- Toggle item slot highlights"));
+        ctx.getSource().sendFeedback(Text.literal("  §efade §8- Toggle fade dye matching"));
+        ctx.getSource().sendFeedback(Text.literal("  §e3p §8- Toggle 3-piece sets filter"));
+        ctx.getSource().sendFeedback(Text.literal("  §esets §8- Toggle piece-specific matching"));
+        ctx.getSource().sendFeedback(Text.literal("  §ewords §8- Toggle word highlights"));
+        ctx.getSource().sendFeedback(Text.literal("  §epattern §8- Toggle pattern highlights"));
+        ctx.getSource().sendFeedback(Text.literal("  §ecustom §8- Toggle custom colors"));
+        ctx.getSource().sendFeedback(Text.literal("  §edupes §8- Toggle dupe highlights"));
+        ctx.getSource().sendFeedback(Text.literal("  §ehighfades §8- Toggle high fade matches (T2+)"));
+        ctx.getSource().sendFeedback(Text.literal("  §eitemframes §8- Toggle item frame scanning"));
+        ctx.getSource().sendFeedback(Text.literal("  §ehextooltip §8- Toggle hex tooltip display"));
+        return 0;
+    }
+
+    private static int showScanHelp(CommandContext<FabricClientCommandSource> ctx) {
+        ctx.getSource().sendFeedback(Text.literal("§c[Seymour] §7Usage: §f/seymour scan <start|stop>"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour scan start §8- Start scanning chests"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour scan stop §8- Stop scanning chests"));
+        return 0;
+    }
+
+    private static int showExportHelp(CommandContext<FabricClientCommandSource> ctx) {
+        ctx.getSource().sendFeedback(Text.literal("§c[Seymour] §7Usage: §f/seymour export <start|stop>"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour export start §8- Start export mode"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour export stop §8- Stop and copy to clipboard"));
+        return 0;
+    }
+
+    private static int showAddHelp(CommandContext<FabricClientCommandSource> ctx) {
+        ctx.getSource().sendFeedback(Text.literal("§c[Seymour] §7Usage: §f/seymour add <color name> <hex>"));
+        ctx.getSource().sendFeedback(Text.literal("§7The hex code must be the last word (6 characters)."));
+        ctx.getSource().sendFeedback(Text.literal("§7Examples:"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour add My Cool Color FF5733"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour add Red 00FF00"));
+        ctx.getSource().sendFeedback(Text.literal("§7This adds a custom color to match against."));
+        return 0;
+    }
+
+    private static int showRemoveHelp(CommandContext<FabricClientCommandSource> ctx) {
+        ctx.getSource().sendFeedback(Text.literal("§c[Seymour] §7Usage: §f/seymour remove <ColorName>"));
+        ctx.getSource().sendFeedback(Text.literal("§7Example: §f/seymour remove My Cool Color"));
+        ctx.getSource().sendFeedback(Text.literal("§7This removes a custom color from the list."));
+        ctx.getSource().sendFeedback(Text.literal("§7Use §f/seymour list §7to see all custom colors."));
+        return 0;
+    }
+
+    private static int showWordHelp(CommandContext<FabricClientCommandSource> ctx) {
+        ctx.getSource().sendFeedback(Text.literal("§c[Seymour] §7Usage: §f/seymour word <add|remove|list>"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour word add <word> <pattern> §8- Add custom word"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour word remove <word> §8- Remove custom word"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour word list §8- List all custom words"));
+        ctx.getSource().sendFeedback(Text.literal("§7Example: §f/seymour word add cool C001"));
+        return 0;
+    }
+
+    private static int showSearchHelp(CommandContext<FabricClientCommandSource> ctx) {
+        ctx.getSource().sendFeedback(Text.literal("§c[Seymour] §7Usage: §f/seymour search <hex>"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour search <hex> §8- Search for pieces with hex"));
+        ctx.getSource().sendFeedback(Text.literal("  §f/seymour search clear §8- Clear search highlights"));
+        ctx.getSource().sendFeedback(Text.literal("§7Example: §f/seymour search FF5733"));
+        return 0;
+    }
+
     private static int addCustomColor(CommandContext<FabricClientCommandSource> ctx) {
         String input = StringArgumentType.getString(ctx, "name");
         String[] parts = input.split(" ");
 
         if (parts.length < 2) {
-            ctx.getSource().sendError(Text.literal("§cUsage: /seymour add <ColorName> <hex>"));
+            ctx.getSource().sendError(Text.literal("§c[Seymour] Usage: /seymour add <color name> <hex>"));
+            ctx.getSource().sendError(Text.literal("§cExample: /seymour add My Cool Color FF5733"));
             return 0;
         }
 
@@ -249,7 +329,8 @@ public class SeymourCommand {
         String colorName = nameBuilder.toString();
 
         if (hex.length() != 6 || !hex.matches("[0-9A-F]{6}")) {
-            ctx.getSource().sendError(Text.literal("§cInvalid hex code! Must be 6 characters (0-9, A-F)"));
+            ctx.getSource().sendError(Text.literal("§c[Seymour] Invalid hex code! Must be 6 characters (0-9, A-F)"));
+            ctx.getSource().sendError(Text.literal("§cExample: FF5733 or 00FF00"));
             return 0;
         }
 
@@ -359,9 +440,20 @@ public class SeymourCommand {
         return 1;
     }
 
+    private static int clearCollectionWarning(CommandContext<FabricClientCommandSource> ctx) {
+        int collectionSize = CollectionManager.getInstance().size();
+        ctx.getSource().sendFeedback(Text.literal("§c§l[WARNING] §cYou are about to clear your entire collection!"));
+        ctx.getSource().sendFeedback(Text.literal("§7This will delete §c" + collectionSize + " §7pieces and all caches."));
+        ctx.getSource().sendFeedback(Text.literal("§7This action §c§lCANNOT§7 be undone!"));
+        ctx.getSource().sendFeedback(Text.literal(""));
+        ctx.getSource().sendFeedback(Text.literal("§7To confirm, run: §f/seymour clear sure"));
+        return 0;
+    }
+
     private static int clearCollection(CommandContext<FabricClientCommandSource> ctx) {
+        int collectionSize = CollectionManager.getInstance().size();
         CollectionManager.getInstance().clear();
-        ctx.getSource().sendFeedback(Text.literal("§a[Seymour Analyzer] §7Cleared collection and all caches!"));
+        ctx.getSource().sendFeedback(Text.literal("§a[Seymour Analyzer] §7Cleared §c" + collectionSize + "§7 pieces and all caches!"));
         return 1;
     }
 
@@ -560,21 +652,29 @@ public class SeymourCommand {
     }
 
     private static int openDatabaseGUI(CommandContext<FabricClientCommandSource> ctx) {
-        ctx.getSource().sendFeedback(Text.literal("§a[Seymour] §7Opening Database GUI..."));
+        try {
+            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+            mc.send(() -> mc.setScreen(new DatabaseScreen(null)));
+        } catch (Exception e) {
+            ctx.getSource().sendError(Text.literal("§c[Seymour] §7Error: " + e.getMessage()));
+            e.printStackTrace();
+        }
+        return 1;
+    }
+
+    private static int openDatabaseGUIWithSearch(CommandContext<FabricClientCommandSource> ctx) {
+        String searchText = StringArgumentType.getString(ctx, "search");
+
 
         try {
             net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
-
-            if (mc == null) {
-                ctx.getSource().sendError(Text.literal("§c[Seymour] §7MC is null!"));
-                return 0;
-            }
-
-            mc.send(() -> mc.setScreen(new DatabaseScreen(null)));
-            ctx.getSource().sendFeedback(Text.literal("§a[Seymour] §7Database GUI opened! Screen: " + (mc.currentScreen != null ? mc.currentScreen.getClass().getSimpleName() : "null")));
-
+            mc.send(() -> {
+                DatabaseScreen screen = new DatabaseScreen(null);
+                screen.setInitialSearch(searchText);
+                mc.setScreen(screen);
+            });
         } catch (Exception e) {
-            ctx.getSource().sendError(Text.literal("§c[Seymour] §7Exception: " + e.getMessage()));
+            ctx.getSource().sendError(Text.literal("§c[Seymour] §7Error: " + e.getMessage()));
             e.printStackTrace();
         }
 
@@ -586,6 +686,18 @@ public class SeymourCommand {
             net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
             mc.send(() -> mc.setScreen(new ArmorChecklistScreen(null)));
             ctx.getSource().sendFeedback(Text.literal("§a[Seymour] §7Checklist GUI opened!"));
+        } catch (Exception e) {
+            ctx.getSource().sendError(Text.literal("§c[Seymour] §7Error: " + e.getMessage()));
+            e.printStackTrace();
+        }
+        return 1;
+    }
+
+    private static int openBestSetsGUI(CommandContext<FabricClientCommandSource> ctx) {
+        try {
+            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+            mc.send(() -> mc.setScreen(new BestSetsScreen(null)));
+            ctx.getSource().sendFeedback(Text.literal("§a[Seymour] §7Best Sets GUI opened!"));
         } catch (Exception e) {
             ctx.getSource().sendError(Text.literal("§c[Seymour] §7Error: " + e.getMessage()));
             e.printStackTrace();

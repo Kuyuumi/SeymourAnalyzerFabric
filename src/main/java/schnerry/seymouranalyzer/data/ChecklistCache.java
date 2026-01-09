@@ -201,6 +201,14 @@ public class ChecklistCache {
 
     // Getters and setters
 
+    public Map<String, CategoryCache> getNormalColorCache() {
+        return normalColorCache;
+    }
+
+    public Map<String, CategoryCache> getFadeDyeOptimalCache() {
+        return fadeDyeOptimalCache;
+    }
+
     public CategoryCache getNormalColorCache(String category) {
         return normalColorCache.get(category);
     }

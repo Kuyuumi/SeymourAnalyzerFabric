@@ -7,6 +7,7 @@ import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.text.Text;
+import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 import schnerry.seymouranalyzer.analyzer.ColorAnalyzer;
 import schnerry.seymouranalyzer.analyzer.PatternDetector;
@@ -20,6 +21,7 @@ import schnerry.seymouranalyzer.scanner.ChestScanner;
  * Exact port from ChatTriggers index.js
  */
 public class InfoBoxRenderer {
+    private static final boolean DEBUG = false; // Disable debugging
     private static InfoBoxRenderer instance;
     private static HoveredItemData hoveredItemData = null;
     private static int boxX = 10;
@@ -50,6 +52,34 @@ public class InfoBoxRenderer {
         return instance;
     }
 
+    /**
+     * Called by mixin to set the currently hovered item directly
+     * This avoids timing issues where the slot might be empty by the time we check it
+     */
+    public void setHoveredItem(ItemStack stack, String itemName) {
+        if (DEBUG) {
+            System.out.println("[InfoBox] setHoveredItem() called");
+            System.out.println("[InfoBox]   Item: " + itemName);
+        }
+
+        // Check if it's a Seymour armor piece
+        if (ChestScanner.isSeymourArmor(itemName)) {
+            if (DEBUG) System.out.println("[InfoBox] Is Seymour armor, analyzing...");
+            setHoveredItemData(stack, itemName);
+        } else {
+            if (DEBUG) System.out.println("[InfoBox] Not Seymour armor, ignoring");
+            // Don't clear data here - let it persist
+        }
+    }
+
+    /**
+     * Called by mixin to clear the hovered item when nothing is focused
+     */
+    public void clearHoveredItem() {
+        // Don't clear immediately - let the data persist until GUI changes
+        if (DEBUG) System.out.println("[InfoBox] clearHoveredItem() called (but not clearing to persist data)");
+    }
+
     private static class HoveredItemData {
         String bestMatchName;
         String bestMatchHex;
@@ -68,11 +98,12 @@ public class InfoBoxRenderer {
         int dupeCount;
         boolean isOwned;
         boolean isNeededForChecklist;
+        int matchTier; // Tier of the assigned match in checklist
 
         HoveredItemData(String bestMatchName, String bestMatchHex, double deltaE, int absoluteDist,
                        int tier, boolean isFadeDye, boolean isCustom, String itemHex,
                        ColorAnalyzer.AnalysisResult analysisResult, String wordMatch, String specialPattern,
-                       String uuid, String itemName, int dupeCount, boolean isOwned, boolean isNeededForChecklist) {
+                       String uuid, String itemName, int dupeCount, boolean isOwned, boolean isNeededForChecklist, int matchTier) {
             this.bestMatchName = bestMatchName;
             this.bestMatchHex = bestMatchHex;
             this.deltaE = deltaE;
@@ -90,70 +121,55 @@ public class InfoBoxRenderer {
             this.dupeCount = dupeCount;
             this.isOwned = isOwned;
             this.isNeededForChecklist = isNeededForChecklist;
+            this.matchTier = matchTier;
         }
     }
 
     private static void render(DrawContext context, float delta, net.minecraft.client.gui.screen.Screen currentScreen) {
+        if (DEBUG) {
+            System.out.println("[InfoBox] render() called");
+            System.out.println("[InfoBox] Current screen instance: " + System.identityHashCode(currentScreen));
+        }
+
         ModConfig config = ModConfig.getInstance();
-        if (!config.infoBoxEnabled()) return;
+        if (!config.infoBoxEnabled()) {
+            if (DEBUG) System.out.println("[InfoBox] InfoBox disabled in config");
+            return;
+        }
 
         MinecraftClient client = MinecraftClient.getInstance();
 
         // Check if GUI changed - if so, clear data
         if (currentOpenGui != currentScreen) {
+            if (DEBUG) System.out.println("[InfoBox] GUI changed from " + (currentOpenGui != null ? currentOpenGui.getClass().getSimpleName() : "null") + " to " + currentScreen.getClass().getSimpleName());
             currentOpenGui = currentScreen;
             hoveredItemData = null; // Clear data when switching GUIs
             isDragging = false;
         }
 
-        // Update hovered item (this will update hoveredItemData if hovering over an item)
-        updateHoveredItem(client);
+        // The mixin now calls setHoveredItem() directly, so we don't need updateHoveredItem()
 
         // Handle dragging
         handleDragging(client);
 
         // Render the box if we have data (either from current hover or persisted from previous hover)
         if (hoveredItemData != null) {
+            if (DEBUG) System.out.println("[InfoBox] Rendering box with data");
             renderInfoBox(context, client);
+        } else {
+            if (DEBUG) System.out.println("[InfoBox] No hovered item data to render");
         }
-    }
-
-    private static void updateHoveredItem(MinecraftClient client) {
-        if (client.currentScreen instanceof HandledScreen<?> handledScreen) {
-            Slot hoveredSlot = null;
-            try {
-                var field = HandledScreen.class.getDeclaredField("focusedSlot");
-                field.setAccessible(true);
-                hoveredSlot = (Slot) field.get(handledScreen);
-            } catch (Exception ignored) {}
-
-            if (hoveredSlot != null && !hoveredSlot.getStack().isEmpty()) {
-                ItemStack stack = hoveredSlot.getStack();
-                String itemName = stack.getName().getString();
-
-                if (ChestScanner.isSeymourArmor(itemName)) {
-                    setHoveredItemData(stack, itemName);
-                    return;
-                }
-            }
-        }
-
-        // Don't clear hoveredItemData here - let it persist until GUI changes
     }
 
     private static void setHoveredItemData(ItemStack stack, String itemName) {
         ChestScanner scanner = new ChestScanner();
         String hex = scanner.extractHex(stack);
-        if (hex == null) {
-            return;
-        }
+        if (hex == null) return;
 
         String uuid = scanner.getOrCreateItemUUID(stack);
 
         var analysis = ColorAnalyzer.getInstance().analyzeArmorColor(hex, itemName);
-        if (analysis == null || analysis.bestMatch == null) {
-            return;
-        }
+        if (analysis == null || analysis.bestMatch == null) return;
 
         ModConfig config = ModConfig.getInstance();
 
@@ -166,9 +182,9 @@ public class InfoBoxRenderer {
                           Math.abs(((itemRgb >> 8) & 0xFF) - ((targetRgb >> 8) & 0xFF)) +
                           Math.abs((itemRgb & 0xFF) - (targetRgb & 0xFF));
 
-        boolean isOwned = checkIfOwned(hex);
+        // Get checklist status from cache for the best match hex
+        ChecklistStatus checklistStatus = getChecklistStatusForHex(analysis.bestMatch.targetHex, itemName);
         int dupeCount = config.dupesEnabled() ? checkDupeCount(hex, uuid) : 0;
-        boolean isNeededForChecklist = ChecklistCache.getInstance().hasChecklistMatches(hex);
 
         hoveredItemData = new HoveredItemData(
             analysis.bestMatch.name,
@@ -185,22 +201,117 @@ public class InfoBoxRenderer {
             uuid,
             itemName,
             dupeCount,
-            isOwned,
-            isNeededForChecklist
+            checklistStatus.hasMatch, // isOwned = true if we have a match assigned in checklist
+            checklistStatus.isNeeded, // isNeeded = true if this is a target in checklist
+            checklistStatus.matchTier // matchTier = tier of the assigned match (or MAX_VALUE if none)
         );
     }
 
-    private static boolean checkIfOwned(String hex) {
-        var collection = CollectionManager.getInstance().getCollection();
-        String hexUpper = hex.toUpperCase();
+    private static class ChecklistStatus {
+        boolean hasMatch;
+        boolean isNeeded;
+        int matchTier;
 
-        for (var piece : collection.values()) {
-            if (piece.getHexcode().toUpperCase().equals(hexUpper)) {
-                return true;
+        ChecklistStatus(boolean hasMatch, boolean isNeeded, int matchTier) {
+            this.hasMatch = hasMatch;
+            this.isNeeded = isNeeded;
+            this.matchTier = matchTier;
+        }
+    }
+
+    /**
+     * Get checklist status for a target hex by checking the checklist cache
+     * @param targetHex The target hex from analysis (what this piece matches to)
+     * @param itemName The item name to determine piece type
+     * @return ChecklistStatus with hasMatch (if assigned), isNeeded (if target), and tier of assigned match
+     */
+    private static ChecklistStatus getChecklistStatusForHex(String targetHex, String itemName) {
+        ChecklistCache cache = ChecklistCache.getInstance();
+        String hexUpper = targetHex.toUpperCase();
+
+        // Determine piece type
+        String pieceType = getPieceTypeFromName(itemName);
+        if (pieceType == null) {
+            return new ChecklistStatus(false, false, Integer.MAX_VALUE);
+        }
+
+        // Check normal color cache
+        for (var categoryCache : cache.getNormalColorCache().values()) {
+            if (categoryCache.matchesByIndex != null) {
+                for (var stageMatches : categoryCache.matchesByIndex.values()) {
+                    if (stageMatches.stageHex != null && stageMatches.stageHex.equalsIgnoreCase(hexUpper)) {
+                        // This hex is a target in checklist
+                        ChecklistCache.MatchInfo matchInfo = getMatchForPieceType(stageMatches, pieceType);
+                        if (matchInfo != null) {
+                            // We have a match assigned
+                            int tier = getTierFromMatch(matchInfo);
+                            return new ChecklistStatus(true, true, tier);
+                        }
+                        // Target exists but no match assigned yet
+                        return new ChecklistStatus(false, true, Integer.MAX_VALUE);
+                    }
+                }
             }
         }
 
-        return false;
+        // Check fade dye cache
+        for (var categoryCache : cache.getFadeDyeOptimalCache().values()) {
+            if (categoryCache.matchesByIndex != null) {
+                for (var stageMatches : categoryCache.matchesByIndex.values()) {
+                    if (stageMatches.stageHex != null && stageMatches.stageHex.equalsIgnoreCase(hexUpper)) {
+                        // This hex is a target in checklist
+                        ChecklistCache.MatchInfo matchInfo = getMatchForPieceType(stageMatches, pieceType);
+                        if (matchInfo != null) {
+                            // We have a match assigned
+                            int tier = getTierFromMatch(matchInfo);
+                            return new ChecklistStatus(true, true, tier);
+                        }
+                        // Target exists but no match assigned yet
+                        return new ChecklistStatus(false, true, Integer.MAX_VALUE);
+                    }
+                }
+            }
+        }
+
+        // Not a checklist target
+        return new ChecklistStatus(false, false, Integer.MAX_VALUE);
+    }
+
+    private static String getPieceTypeFromName(String itemName) {
+        String lowerName = itemName.toLowerCase();
+        if (lowerName.contains("helmet") || lowerName.contains("hat") || lowerName.contains("hood") ||
+            lowerName.contains("cap") || lowerName.contains("crown") || lowerName.contains("mask")) {
+            return "helmet";
+        } else if (lowerName.contains("chestplate") || lowerName.contains("tunic") || lowerName.contains("shirt") ||
+                   lowerName.contains("vest") || lowerName.contains("jacket") || lowerName.contains("robe")) {
+            return "chestplate";
+        } else if (lowerName.contains("leggings") || lowerName.contains("pants") || lowerName.contains("trousers")) {
+            return "leggings";
+        } else if (lowerName.contains("boots") || lowerName.contains("shoes") || lowerName.contains("sandals")) {
+            return "boots";
+        }
+        return null;
+    }
+
+    private static ChecklistCache.MatchInfo getMatchForPieceType(ChecklistCache.StageMatches stageMatches, String pieceType) {
+        return switch (pieceType) {
+            case "helmet" -> stageMatches.helmet;
+            case "chestplate" -> stageMatches.chestplate;
+            case "leggings" -> stageMatches.leggings;
+            case "boots" -> stageMatches.boots;
+            default -> null;
+        };
+    }
+
+    private static int getTierFromMatch(ChecklistCache.MatchInfo matchInfo) {
+        if (matchInfo == null || matchInfo.hex == null) return Integer.MAX_VALUE;
+
+        // Analyze the matched piece to get its tier
+        var analysis = ColorAnalyzer.getInstance().analyzeArmorColor(matchInfo.hex, matchInfo.name);
+        if (analysis != null) {
+            return analysis.tier;
+        }
+        return Integer.MAX_VALUE;
     }
 
     private static int checkDupeCount(String hex, String uuid) {
@@ -269,14 +380,19 @@ public class InfoBoxRenderer {
 
         if (config.wordsEnabled() && data.wordMatch != null) height += 10;
         if (config.patternsEnabled() && data.specialPattern != null) height += 10;
-        if (!isShiftHeld && (data.isOwned || (!data.isOwned && data.isNeededForChecklist))) height += 10; // Add height for checklist indicator
+
+        // Add height for checklist indicator: either have T2+ or needed
+        if (!isShiftHeld && (data.isOwned || data.isNeededForChecklist)) {
+            height += 10;
+        }
+
         if (config.dupesEnabled() && data.dupeCount > 0) height += 10;
 
         return height;
     }
 
     private static int calculateBoxWidth(HoveredItemData data, MinecraftClient client, boolean isShiftHeld) {
-        int minWidth = 190;
+        int minWidth = 150;
         int maxWidth = 300;
         int padding = 10; // 5px on each side
 
@@ -328,11 +444,15 @@ public class InfoBoxRenderer {
             String tierText = getTierText(data.tier, data.isFadeDye, data.isCustom);
             maxTextWidth = Math.max(maxTextWidth, textRenderer.getWidth(tierText));
 
-            if (data.isOwned) {
-                String ownershipText = data.tier <= 1 ? "§a§l✓ Checklist" : "§e§l✓ Checklist";
-                maxTextWidth = Math.max(maxTextWidth, textRenderer.getWidth(ownershipText));
-            } else if (data.isNeededForChecklist) {
-                maxTextWidth = Math.max(maxTextWidth, textRenderer.getWidth("§c§l✗ NEEDED FOR CHECKLIST"));
+            // Show checkmark if we have an assigned match in checklist
+            if (data.isNeededForChecklist) {
+                if (data.isOwned) {
+                    String ownershipText = data.matchTier <= 1 ? "§a§l✓ Checklist" : "§e§l✓ Checklist";
+                    maxTextWidth = Math.max(maxTextWidth, textRenderer.getWidth(ownershipText));
+                } else {
+                    // Show "NEEDED" if no match assigned
+                    maxTextWidth = Math.max(maxTextWidth, textRenderer.getWidth("§c§l✗ NEEDED FOR CHECKLIST"));
+                }
             }
         }
 
@@ -434,17 +554,20 @@ public class InfoBoxRenderer {
 
             yOffset += 50;
 
-            // Ownership check
-            if (hoveredItemData.isOwned) {
-                String ownershipText = hoveredItemData.tier <= 1 ? "§a§l✓ Checklist" : "§e§l✓ Checklist";
-                context.drawText(client.textRenderer, Text.literal(ownershipText),
-                    boxX + 5, boxY + yOffset, 0xFFFFFFFF, true);
-                yOffset += 10;
-            } else if (hoveredItemData.isNeededForChecklist) {
-                // Show red indicator if not owned but needed for checklist
-                context.drawText(client.textRenderer, Text.literal("§c§l✗ NEEDED FOR CHECKLIST"),
-                    boxX + 5, boxY + yOffset, 0xFFFFFFFF, true);
-                yOffset += 10;
+            // Checklist status - show for ALL pieces that are checklist targets
+            if (hoveredItemData.isNeededForChecklist) {
+                if (hoveredItemData.isOwned) {
+                    // We have a match assigned - show checkmark based on the ASSIGNED match's tier
+                    String ownershipText = hoveredItemData.matchTier <= 1 ? "§a§l✓ Checklist" : "§e§l✓ Checklist";
+                    context.drawText(client.textRenderer, Text.literal(ownershipText),
+                        boxX + 5, boxY + yOffset, 0xFFFFFFFF, true);
+                    yOffset += 10;
+                } else {
+                    // We DON'T have a match assigned (or match is T3+)
+                    context.drawText(client.textRenderer, Text.literal("§c§l✗ NEEDED FOR CHECKLIST"),
+                        boxX + 5, boxY + yOffset, 0xFFFFFFFF, true);
+                    yOffset += 10;
+                }
             }
         }
 

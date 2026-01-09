@@ -12,16 +12,29 @@ import java.io.FileWriter;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Manages the collection of scanned armor pieces
+ * Optimized for batch operations with async saving
  */
 public class CollectionManager {
     private static CollectionManager INSTANCE;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final ExecutorService SAVE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "CollectionSaver");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final File collectionFile;
     private final Map<String, ArmorPiece> collection = new ConcurrentHashMap<>();
+    private final AtomicBoolean isDirty = new AtomicBoolean(false);
+    private final AtomicBoolean isSaving = new AtomicBoolean(false);
+    private long lastSaveTime = 0;
+    private static final long SAVE_DEBOUNCE_MS = 2000; // Wait 2 seconds after last change before saving
 
     private CollectionManager() {
         File configDir = new File(FabricLoader.getInstance().getConfigDir().toFile(), "seymouranalyzer");
@@ -61,6 +74,28 @@ public class CollectionManager {
     }
 
     public void save() {
+        save(false);
+    }
+
+    /**
+     * Save collection to disk
+     * @param async If true, saves on background thread
+     */
+    public void save(boolean async) {
+        if (async) {
+            saveAsync();
+        } else {
+            saveSync();
+        }
+    }
+
+    private void saveSync() {
+        if (isSaving.get()) {
+            Seymouranalyzer.LOGGER.warn("Save already in progress, skipping");
+            return;
+        }
+
+        isSaving.set(true);
         try {
             JsonObject json = new JsonObject();
 
@@ -72,9 +107,57 @@ public class CollectionManager {
                 GSON.toJson(json, writer);
             }
 
+            isDirty.set(false);
+            lastSaveTime = System.currentTimeMillis();
             Seymouranalyzer.LOGGER.info("Saved {} armor pieces to collection", collection.size());
         } catch (Exception e) {
             Seymouranalyzer.LOGGER.error("Failed to save collection", e);
+        } finally {
+            isSaving.set(false);
+        }
+    }
+
+    private void saveAsync() {
+        if (isSaving.get()) {
+            return; // Already saving
+        }
+
+        SAVE_EXECUTOR.submit(() -> {
+            try {
+                Thread.sleep(100); // Brief delay to batch multiple rapid changes
+                saveSync();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+    }
+
+    /**
+     * Mark collection as dirty (needs save). Will trigger async save after debounce period.
+     */
+    private void markDirty() {
+        isDirty.set(true);
+        lastSaveTime = System.currentTimeMillis();
+    }
+
+    /**
+     * Check if collection should be auto-saved (called from tick)
+     */
+    public void tick() {
+        if (isDirty.get() && !isSaving.get()) {
+            long timeSinceLastChange = System.currentTimeMillis() - lastSaveTime;
+            if (timeSinceLastChange >= SAVE_DEBOUNCE_MS) {
+                saveAsync();
+            }
+        }
+    }
+
+    /**
+     * Force immediate synchronous save (use when stopping scan or on shutdown)
+     */
+    public void forceSync() {
+        if (isDirty.get()) {
+            saveSync();
         }
     }
 
@@ -83,12 +166,12 @@ public class CollectionManager {
             piece.setUuid(UUID.randomUUID().toString());
         }
         collection.put(piece.getUuid(), piece);
-        save();
+        markDirty(); // Don't save immediately!
     }
 
     public void removePiece(String uuid) {
         collection.remove(uuid);
-        save();
+        markDirty(); // Don't save immediately!
     }
 
     public ArmorPiece getPiece(String uuid) {
@@ -105,7 +188,8 @@ public class CollectionManager {
 
     public void clear() {
         collection.clear();
-        save();
+        markDirty();
+        forceSync(); // Clear is important, save immediately
     }
 
     public int size() {

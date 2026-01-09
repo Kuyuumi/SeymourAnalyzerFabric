@@ -34,8 +34,8 @@ public class ClothConfig {
     // Toggle settings - Filter Options
     private boolean fadeDyesEnabled = true;
     private boolean customColorsEnabled = true;
-    private boolean showHighFades = false;
-    private boolean threePieceSetsEnabled = false;
+    private boolean showHighFades = true;
+    private boolean threePieceSetsEnabled = true;
     private boolean pieceSpecificEnabled = false;
 
     // Toggle settings - Scanning

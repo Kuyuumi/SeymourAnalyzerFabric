@@ -16,6 +16,11 @@ public class ArmorPiece {
     private String specialPattern;
     private long timestamp; // Hypixel Skyblock timestamp
 
+    // Transient fields for hex search (not serialized)
+    private transient String cachedSearchHex;
+    private transient Double cachedSearchDeltaE;
+    private transient Integer cachedSearchDistance;
+
     public static class ChestLocation {
         public int x, y, z;
 
@@ -97,5 +102,15 @@ public class ArmorPiece {
 
     public long getTimestamp() { return timestamp; }
     public void setTimestamp(long timestamp) { this.timestamp = timestamp; }
+
+    // Getters and setters for cached search fields
+    public String getCachedSearchHex() { return cachedSearchHex; }
+    public void setCachedSearchHex(String cachedSearchHex) { this.cachedSearchHex = cachedSearchHex; }
+
+    public Double getCachedSearchDeltaE() { return cachedSearchDeltaE; }
+    public void setCachedSearchDeltaE(Double cachedSearchDeltaE) { this.cachedSearchDeltaE = cachedSearchDeltaE; }
+
+    public Integer getCachedSearchDistance() { return cachedSearchDistance; }
+    public void setCachedSearchDistance(Integer cachedSearchDistance) { this.cachedSearchDistance = cachedSearchDistance; }
 }
 

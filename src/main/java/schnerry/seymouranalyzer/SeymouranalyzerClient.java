@@ -60,8 +60,16 @@ public class SeymouranalyzerClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.player != null && client.world != null) {
                 chestScanner.tick(client);
+                // Tick collection manager for auto-save
+                CollectionManager.getInstance().tick();
             }
         });
+
+        // Register shutdown hook to save collection on exit
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            Seymouranalyzer.LOGGER.info("Saving collection on shutdown...");
+            CollectionManager.getInstance().forceSync();
+        }, "CollectionShutdownSaver"));
 
         Seymouranalyzer.LOGGER.info("Seymour Analyzer client initialized!");
     }

@@ -46,6 +46,9 @@ public class ChestScanner {
 
     public void stopScan() {
         scanningEnabled = false;
+        // Force save any pending changes when stopping scan
+        CollectionManager.getInstance().forceSync();
+        Seymouranalyzer.LOGGER.info("Scanning stopped, collection saved");
     }
 
     public boolean isScanningEnabled() {
@@ -91,6 +94,7 @@ public class ChestScanner {
 
         // Check for item frame scanning (every 5 seconds)
         if (ModConfig.getInstance().itemFramesEnabled() && now - lastItemFrameScanTime >= ITEM_FRAME_SCAN_INTERVAL_MS) {
+            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Triggering item frame scan (5 second interval)");
             lastItemFrameScanTime = now;
             readItemFrames(client);
         }
@@ -217,23 +221,65 @@ public class ChestScanner {
      * Read item frames - exact port from index.js readItemFrames()
      */
     private void readItemFrames(MinecraftClient client) {
-        if (!ModConfig.getInstance().itemFramesEnabled() || (!scanningEnabled && !exportingEnabled)) return;
+        Seymouranalyzer.LOGGER.info("[ItemFrame Debug] readItemFrames() called");
+        Seymouranalyzer.LOGGER.info("[ItemFrame Debug] itemFramesEnabled: {}", ModConfig.getInstance().itemFramesEnabled());
+        Seymouranalyzer.LOGGER.info("[ItemFrame Debug] scanningEnabled: {}, exportingEnabled: {}", scanningEnabled, exportingEnabled);
+
+        if (!ModConfig.getInstance().itemFramesEnabled() || (!scanningEnabled && !exportingEnabled)) {
+            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Skipping - checks failed");
+            return;
+        }
 
         try {
+            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Getting world from client");
             World world = client.world;
-            if (world == null) return;
+            if (world == null) {
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] World is null");
+                return;
+            }
 
+            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Searching for item frame entities");
             List<ItemFrameEntity> itemFrames = new ArrayList<>();
-            // Use entity selector to find all item frame entities
-            world.getEntitiesByClass(ItemFrameEntity.class, null, frame -> true).forEach(itemFrames::add);
+
+            // Create a bounding box around the player (64 block radius in all directions)
+            if (client.player != null) {
+                double x = client.player.getX();
+                double y = client.player.getY();
+                double z = client.player.getZ();
+                double radius = 64.0;
+
+                net.minecraft.util.math.Box searchBox = new net.minecraft.util.math.Box(
+                    x - radius, y - radius, z - radius,
+                    x + radius, y + radius, z + radius
+                );
+
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Search box: {} to {}",
+                    searchBox.minX + "," + searchBox.minY + "," + searchBox.minZ,
+                    searchBox.maxX + "," + searchBox.maxY + "," + searchBox.maxZ);
+
+                // Use entity selector to find all item frame entities within the box
+                world.getEntitiesByClass(ItemFrameEntity.class, searchBox, frame -> true).forEach(itemFrames::add);
+            } else {
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Player is null, cannot search");
+            }
+
+            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Found {} item frames", itemFrames.size());
 
             if (itemFrames.isEmpty()) return;
 
             int pieceCount = 0;
+            int processedFrames = 0;
 
             for (ItemFrameEntity frame : itemFrames) {
+                processedFrames++;
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Processing frame {}", processedFrames);
+
                 ItemStack stack = frame.getHeldItemStack();
-                if (stack.isEmpty()) continue;
+
+                if (stack.isEmpty()) {
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Frame {} has empty stack", processedFrames);
+                    continue;
+                }
 
                 ArmorPiece.ChestLocation chestLoc = new ArmorPiece.ChestLocation(
                     (int) Math.floor(frame.getX()),
@@ -241,18 +287,44 @@ public class ChestScanner {
                     (int) Math.floor(frame.getZ())
                 );
 
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Frame {} location: {}", processedFrames, chestLoc);
+
                 String itemName = stack.getName().getString();
-                if (!isSeymourArmor(itemName)) continue;
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Frame {} item name: '{}'", processedFrames, itemName);
+
+                if (!isSeymourArmor(itemName)) {
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Not Seymour armor");
+                    continue;
+                }
+
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] IS Seymour armor!");
 
                 String uuid = extractUuidFromItem(stack);
-                if (uuid == null) continue;
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Extracted UUID: {}", uuid);
 
-                if (CollectionManager.getInstance().hasPiece(uuid) && !exportingEnabled) continue;
-                if (exportingEnabled && exportCollection.containsKey(uuid)) continue;
+                if (uuid == null) {
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] No UUID found");
+                    continue;
+                }
+
+                if (CollectionManager.getInstance().hasPiece(uuid) && !exportingEnabled) {
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Already in collection");
+                    continue;
+                }
+                if (exportingEnabled && exportCollection.containsKey(uuid)) {
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Already in export collection");
+                    continue;
+                }
 
                 String itemHex = extractHexFromItem(stack);
-                if (itemHex == null) continue;
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Extracted hex: {}", itemHex);
 
+                if (itemHex == null) {
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] No hex found");
+                    continue;
+                }
+
+                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Analyzing color...");
                 ColorAnalyzer.AnalysisResult analysis = ColorAnalyzer.getInstance().analyzeArmorColor(itemHex, itemName);
                 if (analysis == null) continue;
 
@@ -303,13 +375,20 @@ public class ChestScanner {
                 piece.setTimestamp(System.currentTimeMillis());
 
                 if (scanningEnabled && !exportingEnabled) {
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Adding to collection");
                     CollectionManager.getInstance().addPiece(piece);
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Successfully added to collection!");
                 } else if (exportingEnabled) {
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Adding to export collection");
                     exportCollection.put(uuid, piece);
+                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Successfully added to export collection!");
                 }
 
                 pieceCount++;
             }
+
+            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Scan complete. Processed {} frames, found {} pieces",
+                processedFrames, pieceCount);
 
             if (pieceCount > 0 && !exportingEnabled) {
                 int total = CollectionManager.getInstance().size();
@@ -333,7 +412,8 @@ public class ChestScanner {
             }
 
         } catch (Exception e) {
-            Seymouranalyzer.LOGGER.error("Error scanning item frames", e);
+            Seymouranalyzer.LOGGER.error("[ItemFrame Debug] Error scanning item frames", e);
+            e.printStackTrace();
         }
     }
 

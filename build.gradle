@@ -35,8 +35,9 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	// Cloth Config API
+	// Cloth Config API - bundled with the mod using Jar-in-Jar
 	modImplementation "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
+	include "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
 
 }
 

@@ -1,0 +1,165 @@
+package schnerry.seymouranalyzer.mixin;
+
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
+import net.minecraft.item.ItemStack;
+import net.minecraft.screen.slot.Slot;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import schnerry.seymouranalyzer.render.InfoBoxRenderer;
+import schnerry.seymouranalyzer.render.ItemSlotHighlighter;
+
+/**
+ * Mixin to inject slot highlighting directly into the slot rendering process
+ * This ensures we're using the exact same coordinate space as the actual slot rendering
+ * Also tracks the focused slot for InfoBox rendering
+ */
+@Mixin(value = HandledScreen.class, priority = 1500)
+public abstract class HandledScreenMixin {
+
+    @Unique
+    private static final boolean DEBUG = false;
+    @Unique
+    private static Object lastScreen = null;
+    @Unique
+    private static Slot lastHoveredSlot = null;
+    @Unique
+    private static ItemStack lastHoveredStack = ItemStack.EMPTY;
+
+    @Shadow
+    protected Slot focusedSlot;
+
+    /**
+     * Inject after each slot is drawn to render our highlight
+     * This runs in the exact coordinate space as the slot, so no offset calculations needed
+     * ALSO track the hovered slot here since we KNOW it exists at this point
+     */
+    @Inject(
+        method = "drawSlot",
+        at = @At("TAIL")
+    )
+    private void onDrawSlot(DrawContext context, Slot slot, CallbackInfo ci) {
+        ItemStack stack = slot.getStack();
+        if (stack.isEmpty()) return;
+
+        // Let the highlighter render the highlight for this slot
+        ItemSlotHighlighter.getInstance().renderSlotHighlight(context, slot);
+
+        // Track the slot being drawn if it matches the focused slot
+        // This captures the data BEFORE any other mod can modify it
+        if (this.focusedSlot != null && this.focusedSlot == slot) {
+            lastHoveredSlot = slot;
+            lastHoveredStack = stack.copy(); // Copy to preserve the data
+
+            String itemName = stack.getName().getString();
+            if (DEBUG) {
+                System.out.println("[Mixin] Captured hover in drawSlot: " + itemName);
+            }
+
+            // Update InfoBox immediately while we have valid data
+            InfoBoxRenderer.getInstance().setHoveredItem(stack, itemName);
+        }
+    }
+
+    /**
+     * Inject at HEAD of render to capture focusedSlot EARLY before other mods can interfere
+     * This runs BEFORE any other mod's TAIL injections
+     */
+    @Inject(
+        method = "render",
+        at = @At("HEAD")
+    )
+    private void onRenderHead(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+        HandledScreen<?> screen = (HandledScreen<?>) (Object) this;
+
+        // Reset logging flag when screen changes
+        if (lastScreen != screen) {
+            if (DEBUG) {
+                System.out.println("\n[Mixin] ========== NEW SCREEN OPENED ==========");
+                System.out.println("[Mixin] Screen class: " + screen.getClass().getName());
+                System.out.println("[Mixin] Screen instance: " + System.identityHashCode(screen));
+            }
+            lastScreen = screen;
+            lastHoveredSlot = null;
+            lastHoveredStack = ItemStack.EMPTY;
+        }
+
+        // Early capture of focusedSlot before any other mod can modify it
+        if (this.focusedSlot != null && !this.focusedSlot.getStack().isEmpty()) {
+            ItemStack stack = this.focusedSlot.getStack();
+            String itemName = stack.getName().getString();
+
+            if (DEBUG) {
+                System.out.println("[Mixin] Early capture in render HEAD:");
+                System.out.println("[Mixin]   Slot #" + this.focusedSlot.id);
+                System.out.println("[Mixin]   Item: " + itemName);
+            }
+
+            lastHoveredSlot = this.focusedSlot;
+            lastHoveredStack = stack.copy();
+
+            // Update InfoBox with early captured data
+            InfoBoxRenderer.getInstance().setHoveredItem(stack, itemName);
+        } else if (this.focusedSlot == null) {
+            // Only clear if we truly have no focused slot
+            if (lastHoveredSlot != null) {
+                if (DEBUG) {
+                    System.out.println("[Mixin] Clearing hover - no focused slot");
+                }
+                lastHoveredSlot = null;
+                lastHoveredStack = ItemStack.EMPTY;
+            }
+            InfoBoxRenderer.getInstance().clearHoveredItem();
+        }
+    }
+
+    /**
+     * Also inject at TAIL as a backup to catch any late updates
+     * Uses our cached data if focusedSlot was cleared by another mod
+     */
+    @Inject(
+        method = "render",
+        at = @At("TAIL")
+    )
+    private void onRenderTail(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+        // If focusedSlot exists and is still valid, re-update with current data
+        if (this.focusedSlot != null && !this.focusedSlot.getStack().isEmpty()) {
+            ItemStack stack = this.focusedSlot.getStack();
+            String itemName = stack.getName().getString();
+            InfoBoxRenderer.getInstance().setHoveredItem(stack, itemName);
+        } else if (lastHoveredSlot != null && !lastHoveredStack.isEmpty()) {
+            // Use cached data if focusedSlot was cleared but we still have valid cached data
+            if (DEBUG) {
+                System.out.println("[Mixin] Using cached hover data in TAIL");
+            }
+            InfoBoxRenderer.getInstance().setHoveredItem(lastHoveredStack, lastHoveredStack.getName().getString());
+        }
+    }
+
+    /**
+     * Additional backup: Capture focusedSlot when tooltip is about to render
+     * This is called independently and gives us another chance to capture the slot
+     */
+    @Inject(
+        method = "drawMouseoverTooltip",
+        at = @At("HEAD")
+    )
+    private void onDrawTooltipHead(DrawContext context, int x, int y, CallbackInfo ci) {
+        // Capture focused slot data when tooltip rendering starts
+        if (this.focusedSlot != null && !this.focusedSlot.getStack().isEmpty()) {
+            ItemStack stack = this.focusedSlot.getStack();
+
+            // Only update if changed to reduce overhead
+            if (lastHoveredSlot != this.focusedSlot) {
+                lastHoveredSlot = this.focusedSlot;
+                lastHoveredStack = stack.copy();
+                InfoBoxRenderer.getInstance().setHoveredItem(stack, stack.getName().getString());
+            }
+        }
+    }
+}
+

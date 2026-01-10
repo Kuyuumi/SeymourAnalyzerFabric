@@ -39,8 +39,8 @@ public class CollectionManager {
 
     private CollectionManager() {
         File configDir = new File(FabricLoader.getInstance().getConfigDir().toFile(), "seymouranalyzer");
-        if (!configDir.exists()) {
-            configDir.mkdirs();
+        if (!configDir.exists() && !configDir.mkdirs()) {
+            Seymouranalyzer.LOGGER.error("Failed to create seymouranalyzer config directory");
         }
         collectionFile = new File(configDir, "collection.json");
         load();
@@ -100,9 +100,7 @@ public class CollectionManager {
         try {
             JsonObject json = new JsonObject();
 
-            collection.forEach((uuid, piece) -> {
-                json.add(uuid, GSON.toJsonTree(piece));
-            });
+            collection.forEach((uuid, piece) -> json.add(uuid, GSON.toJsonTree(piece)));
 
             try (FileWriter writer = new FileWriter(collectionFile)) {
                 GSON.toJson(json, writer);
@@ -165,17 +163,32 @@ public class CollectionManager {
             // Don't regenerate during active scanning/exporting to avoid lag
             schnerry.seymouranalyzer.scanner.ChestScanner scanner = schnerry.seymouranalyzer.SeymouranalyzerClient.getScanner();
             if (scanner != null && (scanner.isScanningEnabled() || scanner.isExportingEnabled())) {
-                // Update size but skip regeneration during scanning
-                lastCollectionSize = currentSize;
+                // Don't update lastCollectionSize during scanning - this way when scanning stops,
+                // the size mismatch will trigger regeneration
                 return;
             }
 
+            // Don't regenerate while in a mod GUI (e.g., database screen, checklist screen)
+            // to avoid lag while browsing
+            schnerry.seymouranalyzer.gui.GuiScaleManager guiManager = schnerry.seymouranalyzer.gui.GuiScaleManager.getInstance();
+            if (guiManager != null && guiManager.isInModGui()) {
+                // Don't update lastCollectionSize while in GUI - this way when GUI closes,
+                // the size mismatch will trigger regeneration
+                return;
+            }
+
+            // Calculate the difference for logging
+            int sizeDiff = currentSize - lastCollectionSize;
             lastCollectionSize = currentSize;
 
             // Regenerate cache in background thread to avoid lag
             new Thread(() -> {
                 try {
-                    Seymouranalyzer.LOGGER.info("Collection size changed to {}, regenerating checklist cache...", currentSize);
+                    if (sizeDiff > 0) {
+                        Seymouranalyzer.LOGGER.info("Collection size increased by {} (now {}), regenerating checklist cache...", sizeDiff, currentSize);
+                    } else {
+                        Seymouranalyzer.LOGGER.info("Collection size decreased by {} (now {}), regenerating checklist cache...", -sizeDiff, currentSize);
+                    }
                     ChecklistCacheGenerator.generateAllCaches();
                 } catch (Exception e) {
                     Seymouranalyzer.LOGGER.error("Failed to regenerate checklist cache", e);
@@ -206,6 +219,7 @@ public class CollectionManager {
         markDirty(); // Don't save immediately!
     }
 
+    @SuppressWarnings("unused") // Public API method
     public ArmorPiece getPiece(String uuid) {
         return collection.get(uuid);
     }

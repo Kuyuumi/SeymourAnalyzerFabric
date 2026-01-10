@@ -41,9 +41,8 @@ public class PriorityEditorScreen extends ModScreen {
         }).dimensions(this.width / 2 - 155, this.height - 28, 150, 20).build());
 
         // Cancel button
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), button -> {
-            this.close();
-        }).dimensions(this.width / 2 + 5, this.height - 28, 150, 20).build());
+        this.addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), button -> this.close())
+            .dimensions(this.width / 2 + 5, this.height - 28, 150, 20).build());
 
         // Reset to defaults button
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Reset to Defaults"), button -> {
@@ -84,19 +83,19 @@ public class PriorityEditorScreen extends ModScreen {
             if (i == draggedIndex) continue; // Skip the dragged item for now
 
             int itemY = listY + i * (ITEM_HEIGHT + ITEM_SPACING);
-            renderPriorityItem(context, priorities.get(i), listX, itemY, i, mouseX, mouseY);
+            renderPriorityItem(context, priorities.get(i), listX, itemY, i);
         }
 
         // Render dragged item on top
         if (draggedIndex >= 0 && draggedIndex < priorities.size()) {
             int dragY = (int)(LIST_START_Y + draggedIndex * (ITEM_HEIGHT + ITEM_SPACING) + (currentDragY - dragStartY));
-            renderPriorityItem(context, priorities.get(draggedIndex), listX, dragY, draggedIndex, mouseX, mouseY);
+            renderPriorityItem(context, priorities.get(draggedIndex), listX, dragY, draggedIndex);
         }
 
         super.render(context, mouseX, mouseY, delta);
     }
 
-    private void renderPriorityItem(DrawContext context, MatchPriority priority, int x, int y, int index, int mouseX, int mouseY) {
+    private void renderPriorityItem(DrawContext context, MatchPriority priority, int x, int y, int index) {
         boolean isHovered = index == hoveredIndex || index == draggedIndex;
         boolean isDragged = index == draggedIndex;
 
@@ -119,6 +118,7 @@ public class PriorityEditorScreen extends ModScreen {
         context.drawTextWithShadow(this.textRenderer, priority.getDescription(), x + 40, y + 17, 0xFF888888);
 
         // Drag handle (three lines)
+        //noinspection ConstantValue - isDragged is evaluated at render time and can be true
         if (isHovered || isDragged) {
             int handleX = x + LIST_WIDTH - 20;
             int handleY = y + 10;
@@ -132,10 +132,9 @@ public class PriorityEditorScreen extends ModScreen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) { // Left click
             int listX = (this.width - LIST_WIDTH) / 2;
-            int listY = LIST_START_Y;
 
             for (int i = 0; i < priorities.size(); i++) {
-                int itemY = listY + i * (ITEM_HEIGHT + ITEM_SPACING);
+                int itemY = LIST_START_Y + i * (ITEM_HEIGHT + ITEM_SPACING);
                 if (mouseX >= listX && mouseX <= listX + LIST_WIDTH &&
                     mouseY >= itemY && mouseY <= itemY + ITEM_HEIGHT) {
                     draggedIndex = i;

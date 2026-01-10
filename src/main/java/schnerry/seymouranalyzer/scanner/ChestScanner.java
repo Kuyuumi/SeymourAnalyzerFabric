@@ -95,7 +95,6 @@ public class ChestScanner {
 
         // Check for item frame scanning (every 5 seconds)
         if (ClothConfig.getInstance().isItemFramesEnabled() && now - lastItemFrameScanTime >= ITEM_FRAME_SCAN_INTERVAL_MS) {
-            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Triggering item frame scan (5 second interval)");
             lastItemFrameScanTime = now;
             readItemFrames(client);
         }
@@ -131,21 +130,18 @@ public class ChestScanner {
                 String itemHex = extractHexFromItem(stack);
                 if (itemHex == null) continue;
 
-                // Store hex in string to avoid reference issues
-                String storedHex = itemHex;
-
-                ColorAnalyzer.AnalysisResult analysis = ColorAnalyzer.getInstance().analyzeArmorColor(storedHex, itemName);
+                ColorAnalyzer.AnalysisResult analysis = ColorAnalyzer.getInstance().analyzeArmorColor(itemHex, itemName);
                 if (analysis == null) continue;
 
                 ColorAnalyzer.ColorMatch best = analysis.bestMatch;
-                int itemRgb = Integer.parseInt(storedHex, 16);
+                int itemRgb = Integer.parseInt(itemHex, 16);
                 int targetRgb = Integer.parseInt(best.targetHex, 16);
                 int absoluteDist = Math.abs(((itemRgb >> 16) & 0xFF) - ((targetRgb >> 16) & 0xFF)) +
                                   Math.abs(((itemRgb >> 8) & 0xFF) - ((targetRgb >> 8) & 0xFF)) +
                                   Math.abs((itemRgb & 0xFF) - (targetRgb & 0xFF));
 
-                String wordMatch = PatternDetector.getInstance().detectWordMatch(storedHex);
-                String specialPattern = PatternDetector.getInstance().detectPattern(storedHex);
+                String wordMatch = PatternDetector.getInstance().detectWordMatch(itemHex);
+                String specialPattern = PatternDetector.getInstance().detectPattern(itemHex);
 
                 // Store top 3 matches
                 List<ArmorPiece.ColorMatch> top3Matches = new ArrayList<>();
@@ -169,7 +165,7 @@ public class ChestScanner {
                 ArmorPiece piece = new ArmorPiece();
                 piece.setPieceName(removeFormatting(itemName));
                 piece.setUuid(uuid);
-                piece.setHexcode(storedHex);
+                piece.setHexcode(itemHex);
                 piece.setSpecialPattern(specialPattern);
                 piece.setBestMatch(new ArmorPiece.BestMatch(
                     best.name,
@@ -202,7 +198,8 @@ public class ChestScanner {
                         false
                     );
                 }
-            } else if (scannedCount > 0 && exportingEnabled) {
+            } else if (scannedCount > 0) {
+                // exportingEnabled is true here
                 if (client.player != null) {
                     client.player.sendMessage(
                         Text.literal("§a[Seymour Analyzer] §7Added §e" + scannedCount +
@@ -222,24 +219,14 @@ public class ChestScanner {
      * Read item frames - exact port from index.js readItemFrames()
      */
     private void readItemFrames(MinecraftClient client) {
-        Seymouranalyzer.LOGGER.info("[ItemFrame Debug] readItemFrames() called");
-        Seymouranalyzer.LOGGER.info("[ItemFrame Debug] itemFramesEnabled: {}", ClothConfig.getInstance().isItemFramesEnabled());
-        Seymouranalyzer.LOGGER.info("[ItemFrame Debug] scanningEnabled: {}, exportingEnabled: {}", scanningEnabled, exportingEnabled);
-
         if (!ClothConfig.getInstance().isItemFramesEnabled() || (!scanningEnabled && !exportingEnabled)) {
-            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Skipping - checks failed");
             return;
         }
 
         try {
-            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Getting world from client");
             World world = client.world;
-            if (world == null) {
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] World is null");
-                return;
-            }
+            if (world == null) return;
 
-            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Searching for item frame entities");
             List<ItemFrameEntity> itemFrames = new ArrayList<>();
 
             // Create a bounding box around the player (64 block radius in all directions)
@@ -254,33 +241,18 @@ public class ChestScanner {
                     x + radius, y + radius, z + radius
                 );
 
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Search box: {} to {}",
-                    searchBox.minX + "," + searchBox.minY + "," + searchBox.minZ,
-                    searchBox.maxX + "," + searchBox.maxY + "," + searchBox.maxZ);
-
                 // Use entity selector to find all item frame entities within the box
-                world.getEntitiesByClass(ItemFrameEntity.class, searchBox, frame -> true).forEach(itemFrames::add);
-            } else {
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Player is null, cannot search");
+                itemFrames.addAll(world.getEntitiesByClass(ItemFrameEntity.class, searchBox, frame -> true));
             }
-
-            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Found {} item frames", itemFrames.size());
 
             if (itemFrames.isEmpty()) return;
 
             int pieceCount = 0;
-            int processedFrames = 0;
 
             for (ItemFrameEntity frame : itemFrames) {
-                processedFrames++;
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Processing frame {}", processedFrames);
-
                 ItemStack stack = frame.getHeldItemStack();
 
-                if (stack.isEmpty()) {
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Frame {} has empty stack", processedFrames);
-                    continue;
-                }
+                if (stack.isEmpty()) continue;
 
                 ArmorPiece.ChestLocation chestLoc = new ArmorPiece.ChestLocation(
                     (int) Math.floor(frame.getX()),
@@ -288,44 +260,21 @@ public class ChestScanner {
                     (int) Math.floor(frame.getZ())
                 );
 
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Frame {} location: {}", processedFrames, chestLoc);
-
                 String itemName = stack.getName().getString();
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Frame {} item name: '{}'", processedFrames, itemName);
 
-                if (!isSeymourArmor(itemName)) {
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Not Seymour armor");
-                    continue;
-                }
-
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] IS Seymour armor!");
+                if (!isSeymourArmor(itemName)) continue;
 
                 String uuid = extractUuidFromItem(stack);
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Extracted UUID: {}", uuid);
 
-                if (uuid == null) {
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] No UUID found");
-                    continue;
-                }
+                if (uuid == null) continue;
 
-                if (CollectionManager.getInstance().hasPiece(uuid) && !exportingEnabled) {
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Already in collection");
-                    continue;
-                }
-                if (exportingEnabled && exportCollection.containsKey(uuid)) {
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Already in export collection");
-                    continue;
-                }
+                if (CollectionManager.getInstance().hasPiece(uuid) && !exportingEnabled) continue;
+                if (exportingEnabled && exportCollection.containsKey(uuid)) continue;
 
                 String itemHex = extractHexFromItem(stack);
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Extracted hex: {}", itemHex);
 
-                if (itemHex == null) {
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] No hex found");
-                    continue;
-                }
+                if (itemHex == null) continue;
 
-                Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Analyzing color...");
                 ColorAnalyzer.AnalysisResult analysis = ColorAnalyzer.getInstance().analyzeArmorColor(itemHex, itemName);
                 if (analysis == null) continue;
 
@@ -376,20 +325,14 @@ public class ChestScanner {
                 piece.setTimestamp(System.currentTimeMillis());
 
                 if (scanningEnabled && !exportingEnabled) {
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Adding to collection");
                     CollectionManager.getInstance().addPiece(piece);
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Successfully added to collection!");
                 } else if (exportingEnabled) {
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Adding to export collection");
                     exportCollection.put(uuid, piece);
-                    Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Successfully added to export collection!");
                 }
 
                 pieceCount++;
             }
 
-            Seymouranalyzer.LOGGER.info("[ItemFrame Debug] Scan complete. Processed {} frames, found {} pieces",
-                processedFrames, pieceCount);
 
             if (pieceCount > 0 && !exportingEnabled) {
                 int total = CollectionManager.getInstance().size();
@@ -401,7 +344,8 @@ public class ChestScanner {
                         false
                     );
                 }
-            } else if (pieceCount > 0 && exportingEnabled) {
+            } else if (pieceCount > 0) {
+                // exportingEnabled is true here
                 if (client.player != null) {
                     client.player.sendMessage(
                         Text.literal("§a[Seymour Analyzer] §7Added §e" + pieceCount +
@@ -413,8 +357,7 @@ public class ChestScanner {
             }
 
         } catch (Exception e) {
-            Seymouranalyzer.LOGGER.error("[ItemFrame Debug] Error scanning item frames", e);
-            e.printStackTrace();
+            Seymouranalyzer.LOGGER.error("Error scanning item frames", e);
         }
     }
 

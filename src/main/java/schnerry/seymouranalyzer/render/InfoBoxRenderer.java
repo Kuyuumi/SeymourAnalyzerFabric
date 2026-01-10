@@ -80,6 +80,16 @@ public class InfoBoxRenderer {
     }
 
     /**
+     * Force clear the hovered item data cache
+     * Called after checklist cache regeneration to ensure stale data is not shown
+     */
+    public static void forceCloseHoveredDataCache() {
+        hoveredItemData = null;
+        lastHoveredStack = null;
+        if (DEBUG) System.out.println("[InfoBox] Forced clear of hovered item data cache");
+    }
+
+    /**
      * Get the last hovered ItemStack (for debugger access)
      */
     public ItemStack getLastHoveredStack() {
@@ -131,7 +141,7 @@ public class InfoBoxRenderer {
         }
     }
 
-    @SuppressWarnings({"unused", "deprecation"})
+    @SuppressWarnings("unused") // delta is required by Fabric API callback signature
     private static void render(DrawContext context, float delta, net.minecraft.client.gui.screen.Screen currentScreen) {
         if (DEBUG) {
             System.out.println("[InfoBox] render() called");
@@ -168,7 +178,6 @@ public class InfoBoxRenderer {
         }
     }
 
-    @SuppressWarnings("deprecation")
     private static void setHoveredItemData(ItemStack stack, String itemName) {
         ChestScanner scanner = new ChestScanner();
         String hex = scanner.extractHex(stack);
@@ -383,7 +392,6 @@ public class InfoBoxRenderer {
         }
     }
 
-    @SuppressWarnings("deprecation")
     private static int calculateBoxHeight(HoveredItemData data, boolean isShiftHeld) {
         ClothConfig config = ClothConfig.getInstance();
         int height = isShiftHeld ? 120 : 90;
@@ -401,7 +409,6 @@ public class InfoBoxRenderer {
         return height;
     }
 
-    @SuppressWarnings("deprecation")
     private static int calculateBoxWidth(HoveredItemData data, MinecraftClient client, boolean isShiftHeld) {
         int maxWidth = 300;
         int minWidth = 150;
@@ -477,7 +484,6 @@ public class InfoBoxRenderer {
         return Math.min(Math.max(calculatedWidth, minWidth), maxWidth);
     }
 
-    @SuppressWarnings("deprecation")
     private static void renderInfoBox(DrawContext context, MinecraftClient client) {
         boolean isShiftHeld = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS ||
                              GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;

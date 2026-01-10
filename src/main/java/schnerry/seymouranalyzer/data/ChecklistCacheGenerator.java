@@ -67,7 +67,7 @@ public class ChecklistCacheGenerator {
             List<ChecklistEntry> entries = categoryEntry.getValue();
 
             ChecklistCache.CategoryCache categoryCache = generateCacheForCategory(
-                categoryName, entries, collection, false
+                categoryName, entries, collection
             );
 
             cache.setNormalColorCache(categoryName, categoryCache);
@@ -79,7 +79,7 @@ public class ChecklistCacheGenerator {
             List<ChecklistEntry> entries = categoryEntry.getValue();
 
             ChecklistCache.CategoryCache categoryCache = generateCacheForCategory(
-                categoryName, entries, collection, true
+                categoryName, entries, collection
             );
 
             cache.setFadeDyeOptimalCache(categoryName, categoryCache);
@@ -88,6 +88,9 @@ public class ChecklistCacheGenerator {
         // Update collection size and save
         cache.setCollectionSize(collection.size());
         cache.save();
+
+        // Clear InfoBoxRenderer's cached hover data so it will be regenerated with new cache data
+        schnerry.seymouranalyzer.render.InfoBoxRenderer.forceCloseHoveredDataCache();
 
         Seymouranalyzer.LOGGER.info("Completed full checklist cache generation for {} normal and {} fade dye categories",
             normalCategories.size(), fadeDyeCategories.size());
@@ -99,8 +102,7 @@ public class ChecklistCacheGenerator {
     private static ChecklistCache.CategoryCache generateCacheForCategory(
             String categoryName,
             List<ChecklistEntry> entries,
-            Map<String, ArmorPiece> collection,
-            boolean fadeDyeMode) {
+            Map<String, ArmorPiece> collection) {
 
         ChecklistCache.CategoryCache categoryCache = new ChecklistCache.CategoryCache();
         categoryCache.category = categoryName;

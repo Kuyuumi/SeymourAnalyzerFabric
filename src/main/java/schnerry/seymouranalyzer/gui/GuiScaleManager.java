@@ -15,9 +15,7 @@ public class GuiScaleManager {
 
     private GuiScaleManager() {
         // Register tick event to check scale every tick
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            tick();
-        });
+        ClientTickEvents.END_CLIENT_TICK.register(client -> tick());
     }
 
     public static GuiScaleManager getInstance() {
@@ -64,7 +62,7 @@ public class GuiScaleManager {
 
         // Check if we're still in a mod GUI (nested GUIs)
         Screen currentScreen = client.currentScreen;
-        if (currentScreen != null && isModScreen(currentScreen)) {
+        if (isModScreen(currentScreen)) {
             schnerry.seymouranalyzer.Seymouranalyzer.LOGGER.info("[GuiScale] Still in mod GUI, keeping scale at 2");
             return;
         }
@@ -101,7 +99,7 @@ public class GuiScaleManager {
         if (client == null || client.options == null) return;
 
         Screen currentScreen = client.currentScreen;
-        boolean shouldBeModGui = currentScreen != null && isModScreen(currentScreen);
+        boolean shouldBeModGui = isModScreen(currentScreen);
 
         // Debug logging
         if (isModGuiOpen && currentScreen == null) {
@@ -121,8 +119,19 @@ public class GuiScaleManager {
     }
 
     /**
+     * Check if we're currently in a mod GUI
+     */
+    public boolean isInModGui() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) return false;
+
+        return isModScreen(client.currentScreen);
+    }
+
+    /**
      * Reset state (for when client closes or switches worlds)
      */
+    @SuppressWarnings("unused") // May be used in future for world changes
     public void reset() {
         originalGuiScale = -1;
         isModGuiOpen = false;

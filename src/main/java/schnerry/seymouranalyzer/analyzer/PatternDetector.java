@@ -56,6 +56,7 @@ public class PatternDetector {
 
     /**
      * Check if hex contains a word pattern from the word list
+     * Prioritizes longer word matches over shorter ones
      */
     public String detectWordMatch(String hex) {
         ClothConfig config = ClothConfig.getInstance();
@@ -64,16 +65,25 @@ public class PatternDetector {
         hex = hex.toUpperCase();
         Map<String, String> wordList = config.getWordList();
 
+        String longestMatch = null;
+        int longestMatchLength = 0;
+
         for (Map.Entry<String, String> entry : wordList.entrySet()) {
             String word = entry.getKey();
             String pattern = entry.getValue().toUpperCase();
 
             if (matchesPattern(hex, pattern)) {
-                return word;
+                // Count non-wildcard characters in the pattern to determine "length"
+                int effectiveLength = pattern.replace("X", "").length();
+
+                if (effectiveLength > longestMatchLength) {
+                    longestMatch = word;
+                    longestMatchLength = effectiveLength;
+                }
             }
         }
 
-        return null;
+        return longestMatch;
     }
 
     /**

@@ -5,7 +5,6 @@ import schnerry.seymouranalyzer.config.ClothConfig;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 /**
  * Detects special hex patterns (paired, repeating, palindrome, AxBxCx) and word matches
@@ -79,25 +78,41 @@ public class PatternDetector {
 
     /**
      * Check if hex matches a pattern with X wildcards
+     * Supports patterns shorter than hex (substring matching)
+     * Matches old ChatTriggers behavior: checks if pattern exists anywhere in hex
      */
     private boolean matchesPattern(String hex, String pattern) {
-        if (hex.length() != pattern.length()) return false;
+        // If pattern has wildcards (X), use sliding window with regex-style matching
+        if (pattern.contains("X")) {
+            int patternLen = pattern.length();
+            // Try all possible positions in the hex where this pattern could fit
+            for (int startIdx = 0; startIdx + patternLen <= hex.length(); startIdx++) {
+                boolean matches = true;
+                for (int i = 0; i < patternLen; i++) {
+                    char patternChar = pattern.charAt(i);
+                    char hexChar = hex.charAt(startIdx + i);
 
-        for (int i = 0; i < hex.length(); i++) {
-            char hexChar = hex.charAt(i);
-            char patternChar = pattern.charAt(i);
-
-            if (patternChar != 'X' && hexChar != patternChar) {
-                return false;
+                    // X is wildcard, anything else must match exactly
+                    if (patternChar != 'X' && hexChar != patternChar) {
+                        matches = false;
+                        break;
+                    }
+                }
+                if (matches) {
+                    return true;
+                }
             }
+            return false;
         }
 
-        return true;
+        // No wildcards: simple substring check (indexOf)
+        return hex.contains(pattern);
     }
 
     /**
      * Get all pieces with a specific pattern
      */
+    @SuppressWarnings("unused") // Public API method for future use
     public Set<String> getPiecesWithPattern(String patternType, Map<String, String> hexcodeMap) {
         Set<String> matches = new HashSet<>();
 
@@ -117,6 +132,7 @@ public class PatternDetector {
     /**
      * Get all pieces with word matches
      */
+    @SuppressWarnings("unused") // Public API method for future use
     public Set<String> getPiecesWithWords(Map<String, String> hexcodeMap) {
         Set<String> matches = new HashSet<>();
 

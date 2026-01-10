@@ -23,7 +23,7 @@ public class WordMatchesScreen extends ModScreen {
     private boolean isDraggingScrollbar = false;
 
     // For row click handling
-    private List<WordRow> cachedRows = new ArrayList<>();
+    private final List<WordRow> cachedRows = new ArrayList<>();
 
     // Context menu state
     private ContextMenu contextMenu = null;
@@ -71,7 +71,9 @@ public class WordMatchesScreen extends ModScreen {
 
         // Back button
         ButtonWidget backBtn = ButtonWidget.builder(Text.literal("← Back to Database"), button -> {
-            this.client.setScreen(parent);
+            if (this.client != null) {
+                this.client.setScreen(parent);
+            }
         }).dimensions(20, 10, 150, 20).build();
         this.addDrawableChild(backBtn);
     }
@@ -344,6 +346,7 @@ public class WordMatchesScreen extends ModScreen {
         return false;
     }
 
+    @SuppressWarnings("unused") // Reserved for future copy-to-clipboard feature
     private void copyToClipboard(String text) {
         try {
             StringSelection selection = new StringSelection(text);

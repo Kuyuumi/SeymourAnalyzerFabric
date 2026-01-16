@@ -7,7 +7,7 @@ A Fabric 1.21.8 client-side mod for Hypixel Skyblock that analyzes and tracks dy
 ## Features
 
 ✅ **Color Analysis**
-- Analyzes leather armor hex colors using CIEDE2000 color difference (Delta E)
+- Analyzes leather armor hex colors using CIEDE76 color difference (Delta E)
 - Matches against 1000+ target colors from the game
 - Supports fade dyes, custom colors, and normal dyes
 - Tier system (T1, T2, T2+) based on color accuracy

@@ -1,10 +1,16 @@
 package schnerry.seymouranalyzer.gui;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.gui.Click;
+import net.minecraft.client.input.KeyInput;
+import net.minecraft.client.input.CharInput;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
 import schnerry.seymouranalyzer.Seymouranalyzer;
 import schnerry.seymouranalyzer.config.ClothConfig;
 import schnerry.seymouranalyzer.data.ArmorPiece;
@@ -773,31 +779,31 @@ public class DatabaseScreen extends ModScreen {
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-        if (isDraggingScrollbar && button == 0) {
+    public boolean mouseDragged(Click click, double deltaX, double deltaY) {
+        if (isDraggingScrollbar && click.button() == 0) {
             int availableHeight = this.height - START_Y - 40;
             int maxVisibleRows = Math.max(1, availableHeight / ROW_HEIGHT);
             int scrollbarY = START_Y;
             int scrollbarHeight = maxVisibleRows * ROW_HEIGHT;
 
             int maxScroll = Math.max(0, filteredPieces.size() - maxVisibleRows);
-            scrollOffset = ScrollbarRenderer.calculateScrollFromDrag(mouseY, scrollbarY, scrollbarHeight,
+            scrollOffset = ScrollbarRenderer.calculateScrollFromDrag(click.y(), scrollbarY, scrollbarHeight,
                 filteredPieces.size(), maxVisibleRows);
             scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset));
             return true;
         }
 
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, deltaX, deltaY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && isDraggingScrollbar) {
+    public boolean mouseReleased(Click click) {
+        if (click.button() == 0 && isDraggingScrollbar) {
             isDraggingScrollbar = false;
             return true;
         }
 
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     private void filterAndSort() {
@@ -943,7 +949,7 @@ public class DatabaseScreen extends ModScreen {
 
     private boolean checkFadeDye(String colorName) {
         String[] fadeDyes = {
-            "Aurora", "Black Ice", "Frog", "Lava", "Lucky", "Marine",
+            "Aurora", "Black Ice", "Frog", "Hellebore", "Kingfisher", "Lava", "Lucky", "Marine",
             "Oasis", "Ocean", "Pastel Sky", "Portal", "Red Tulip", "Rose",
             "Snowflake", "Spooky", "Sunflower", "Sunset", "Warden"
         };
@@ -957,8 +963,10 @@ public class DatabaseScreen extends ModScreen {
     }
 
     private void updateExpandedPiece(int mouseX, int mouseY) {
-        // Check if shift is held
-        boolean shiftHeld = hasShiftDown();
+        // Check if shift is held using InputUtil
+        var window = MinecraftClient.getInstance().getWindow();
+        boolean shiftHeld = InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_LEFT_SHIFT)
+                         || InputUtil.isKeyPressed(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
 
         if (!shiftHeld) {
             expandedPieceUuid = null;
@@ -1020,13 +1028,17 @@ public class DatabaseScreen extends ModScreen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(Click click, boolean isOutOfBounds) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         // Check text fields first (highest priority for clicks)
-        if (searchField != null && searchField.mouseClicked(mouseX, mouseY, button)) {
+        if (searchField != null && searchField.mouseClicked(click, isOutOfBounds)) {
             this.setFocused(searchField);
             return true;
         }
-        if (hexSearchField != null && hexSearchField.mouseClicked(mouseX, mouseY, button)) {
+        if (hexSearchField != null && hexSearchField.mouseClicked(click, isOutOfBounds)) {
             this.setFocused(hexSearchField);
             return true;
         }
@@ -1108,33 +1120,33 @@ public class DatabaseScreen extends ModScreen {
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, isOutOfBounds);
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (searchField != null && searchField.keyPressed(keyCode, scanCode, modifiers)) {
+    public boolean keyPressed(KeyInput keyInput) {
+        if (searchField != null && searchField.keyPressed(keyInput)) {
             filterAndSort();
             return true;
         }
-        if (hexSearchField != null && hexSearchField.keyPressed(keyCode, scanCode, modifiers)) {
+        if (hexSearchField != null && hexSearchField.keyPressed(keyInput)) {
             filterAndSort();
             return true;
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(keyInput);
     }
 
     @Override
-    public boolean charTyped(char chr, int modifiers) {
-        if (searchField != null && searchField.charTyped(chr, modifiers)) {
+    public boolean charTyped(CharInput charInput) {
+        if (searchField != null && searchField.charTyped(charInput)) {
             filterAndSort();
             return true;
         }
-        if (hexSearchField != null && hexSearchField.charTyped(chr, modifiers)) {
+        if (hexSearchField != null && hexSearchField.charTyped(charInput)) {
             filterAndSort();
             return true;
         }
-        return super.charTyped(chr, modifiers);
+        return super.charTyped(charInput);
     }
 
     @Override

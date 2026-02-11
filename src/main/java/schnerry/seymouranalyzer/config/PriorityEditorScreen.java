@@ -2,6 +2,7 @@ package schnerry.seymouranalyzer.config;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.Click;
 import net.minecraft.text.Text;
 import schnerry.seymouranalyzer.gui.ModScreen;
 
@@ -103,9 +104,16 @@ public class PriorityEditorScreen extends ModScreen {
         int bgColor = isDragged ? 0x88444444 : (isHovered ? 0x66333333 : 0x44222222);
         context.fill(x, y, x + LIST_WIDTH, y + ITEM_HEIGHT, bgColor);
 
-        // Border
+        // Border - draw manually since drawBorder was removed in 1.21.10
         int borderColor = isDragged ? 0xFFFFFFFF : (isHovered ? 0xFF888888 : 0xFF444444);
-        context.drawBorder(x, y, LIST_WIDTH, ITEM_HEIGHT, borderColor);
+        // Top edge
+        context.fill(x, y, x + LIST_WIDTH, y + 1, borderColor);
+        // Bottom edge
+        context.fill(x, y + ITEM_HEIGHT - 1, x + LIST_WIDTH, y + ITEM_HEIGHT, borderColor);
+        // Left edge
+        context.fill(x, y, x + 1, y + ITEM_HEIGHT, borderColor);
+        // Right edge
+        context.fill(x + LIST_WIDTH - 1, y, x + LIST_WIDTH, y + ITEM_HEIGHT, borderColor);
 
         // Priority number
         String priorityNum = "#" + (index + 1);
@@ -129,28 +137,28 @@ public class PriorityEditorScreen extends ModScreen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0) { // Left click
+    public boolean mouseClicked(Click click, boolean isOutOfBounds) {
+        if (click.button() == 0) { // Left click
             int listX = (this.width - LIST_WIDTH) / 2;
 
             for (int i = 0; i < priorities.size(); i++) {
                 int itemY = LIST_START_Y + i * (ITEM_HEIGHT + ITEM_SPACING);
-                if (mouseX >= listX && mouseX <= listX + LIST_WIDTH &&
-                    mouseY >= itemY && mouseY <= itemY + ITEM_HEIGHT) {
+                if (click.x() >= listX && click.x() <= listX + LIST_WIDTH &&
+                    click.y() >= itemY && click.y() <= itemY + ITEM_HEIGHT) {
                     draggedIndex = i;
-                    dragStartY = mouseY;
-                    currentDragY = mouseY;
+                    dragStartY = click.y();
+                    currentDragY = click.y();
                     return true;
                 }
             }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, isOutOfBounds);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && draggedIndex >= 0) {
+    public boolean mouseReleased(Click click) {
+        if (click.button() == 0 && draggedIndex >= 0) {
             // Calculate drop position
             int listY = LIST_START_Y;
             int itemTotalHeight = ITEM_HEIGHT + ITEM_SPACING;
@@ -171,17 +179,17 @@ public class PriorityEditorScreen extends ModScreen {
             return true;
         }
 
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-        if (button == 0 && draggedIndex >= 0) {
-            currentDragY = mouseY;
+    public boolean mouseDragged(Click click, double deltaX, double deltaY) {
+        if (click.button() == 0 && draggedIndex >= 0) {
+            currentDragY = click.y();
             return true;
         }
 
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, deltaX, deltaY);
     }
 }
 

@@ -1,30 +1,31 @@
 package schnerry.seymouranalyzer.render;
 
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.render.*;
+import net.minecraft.client.render.debug.DebugRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Manages and renders highlighted block positions in the world.
- * Renders through walls by temporarily disabling depth test during render.
+ * Updated for 1.21.10 rendering API.
  */
 public class BlockHighlighter {
     private static BlockHighlighter instance;
     private final List<BlockPos> highlightedBlocks = new ArrayList<>();
 
+    // Highlight color (RGBA) - bright green
+    private float r = 0.0f;
+    private float g = 1.0f;
+    private float b = 0.0f;
+    private float a = 0.8f;
+
     private BlockHighlighter() {
-        // Use LAST event to render after everything else
-        WorldRenderEvents.LAST.register(this::renderHighlights);
     }
 
     public static BlockHighlighter getInstance() {
@@ -50,80 +51,83 @@ public class BlockHighlighter {
         highlightedBlocks.clear();
     }
 
-    private void renderHighlights(WorldRenderContext context) {
+    public void setColor(float r, float g, float b, float a) {
+        this.r = r;
+        this.g = g;
+        this.b = b;
+        this.a = a;
+    }
+
+    public List<BlockPos> getHighlightedBlocks() {
+        return new ArrayList<>(highlightedBlocks);
+    }
+
+    public boolean hasHighlights() {
+        return !highlightedBlocks.isEmpty();
+    }
+
+    /**
+     * Called by DebugRendererMixin to render block highlights.
+     */
+    public void renderHighlights(MatrixStack matrices, VertexConsumerProvider vertexConsumers, Vec3d cameraPos) {
         if (highlightedBlocks.isEmpty()) return;
 
-        MatrixStack matrices = context.matrixStack();
-        if (matrices == null) return;
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.world == null) return;
 
-        VertexConsumerProvider.Immediate immediate = context.consumers() instanceof VertexConsumerProvider.Immediate imm
-            ? imm : null;
-        if (immediate == null) return;
-
-        Vec3d camera = context.camera().getPos();
-
-        matrices.push();
-        matrices.translate(-camera.x, -camera.y, -camera.z);
-
-        Matrix4f positionMatrix = matrices.peek().getPositionMatrix();
-
-        // Green color
-        float red = 0.0f;
-        float green = 1.0f;
-        float blue = 0.0f;
-        float alpha = 1.0f;
-
-        // Get vertex consumer for lines
-        VertexConsumer consumer = immediate.getBuffer(RenderLayer.getLines());
-
-        // Draw all highlights
         for (BlockPos pos : highlightedBlocks) {
-            drawBoxOutline(consumer, positionMatrix, pos, red, green, blue, alpha);
+            // Calculate camera-relative coordinates for a 1x1x1 block
+            float x1 = (float)(pos.getX() - cameraPos.x);
+            float y1 = (float)(pos.getY() - cameraPos.y);
+            float z1 = (float)(pos.getZ() - cameraPos.z);
+            float x2 = x1 + 1.0f;
+            float y2 = y1 + 1.0f;
+            float z2 = z1 + 1.0f;
+
+            drawBoxOutline(matrices, vertexConsumers, x1, y1, z1, x2, y2, z2, r, g, b, a);
         }
-
-        // Force draw the buffered vertices
-        immediate.draw(RenderLayer.getLines());
-
-        matrices.pop();
     }
 
-    private void drawBoxOutline(VertexConsumer consumer, Matrix4f matrix, BlockPos pos,
-                                 float red, float green, float blue, float alpha) {
-        float minX = pos.getX();
-        float minY = pos.getY();
-        float minZ = pos.getZ();
-        float maxX = pos.getX() + 1.0f;
-        float maxY = pos.getY() + 1.0f;
-        float maxZ = pos.getZ() + 1.0f;
+    /**
+     * Draws a box outline using lines.
+     */
+    private void drawBoxOutline(MatrixStack matrices, VertexConsumerProvider vertexConsumers,
+                                 float x1, float y1, float z1, float x2, float y2, float z2,
+                                 float r, float g, float b, float a) {
+        VertexConsumer lines = vertexConsumers.getBuffer(RenderLayer.getLines());
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
 
-        // Bottom edges
-        line(consumer, matrix, minX, minY, minZ, maxX, minY, minZ, red, green, blue, alpha);
-        line(consumer, matrix, maxX, minY, minZ, maxX, minY, maxZ, red, green, blue, alpha);
-        line(consumer, matrix, maxX, minY, maxZ, minX, minY, maxZ, red, green, blue, alpha);
-        line(consumer, matrix, minX, minY, maxZ, minX, minY, minZ, red, green, blue, alpha);
+        // Bottom face edges
+        drawLine(lines, matrix, x1, y1, z1, x2, y1, z1, r, g, b, a);
+        drawLine(lines, matrix, x2, y1, z1, x2, y1, z2, r, g, b, a);
+        drawLine(lines, matrix, x2, y1, z2, x1, y1, z2, r, g, b, a);
+        drawLine(lines, matrix, x1, y1, z2, x1, y1, z1, r, g, b, a);
 
-        // Top edges
-        line(consumer, matrix, minX, maxY, minZ, maxX, maxY, minZ, red, green, blue, alpha);
-        line(consumer, matrix, maxX, maxY, minZ, maxX, maxY, maxZ, red, green, blue, alpha);
-        line(consumer, matrix, maxX, maxY, maxZ, minX, maxY, maxZ, red, green, blue, alpha);
-        line(consumer, matrix, minX, maxY, maxZ, minX, maxY, minZ, red, green, blue, alpha);
+        // Top face edges
+        drawLine(lines, matrix, x1, y2, z1, x2, y2, z1, r, g, b, a);
+        drawLine(lines, matrix, x2, y2, z1, x2, y2, z2, r, g, b, a);
+        drawLine(lines, matrix, x2, y2, z2, x1, y2, z2, r, g, b, a);
+        drawLine(lines, matrix, x1, y2, z2, x1, y2, z1, r, g, b, a);
 
         // Vertical edges
-        line(consumer, matrix, minX, minY, minZ, minX, maxY, minZ, red, green, blue, alpha);
-        line(consumer, matrix, maxX, minY, minZ, maxX, maxY, minZ, red, green, blue, alpha);
-        line(consumer, matrix, maxX, minY, maxZ, maxX, maxY, maxZ, red, green, blue, alpha);
-        line(consumer, matrix, minX, minY, maxZ, minX, maxY, maxZ, red, green, blue, alpha);
+        drawLine(lines, matrix, x1, y1, z1, x1, y2, z1, r, g, b, a);
+        drawLine(lines, matrix, x2, y1, z1, x2, y2, z1, r, g, b, a);
+        drawLine(lines, matrix, x2, y1, z2, x2, y2, z2, r, g, b, a);
+        drawLine(lines, matrix, x1, y1, z2, x1, y2, z2, r, g, b, a);
     }
 
-    private void line(VertexConsumer consumer, Matrix4f matrix,
-                      float x1, float y1, float z1, float x2, float y2, float z2,
-                      float r, float g, float b, float a) {
-        // Calculate normal for line
+    /**
+     * Draws a single line segment.
+     */
+    private void drawLine(VertexConsumer consumer, Matrix4f matrix,
+                          float x1, float y1, float z1, float x2, float y2, float z2,
+                          float r, float g, float b, float a) {
+        // Calculate normal for the line (direction)
         float dx = x2 - x1;
         float dy = y2 - y1;
         float dz = z2 - z1;
-        float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (len == 0) len = 1;
+        float len = (float)Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (len < 0.0001f) len = 1.0f;
         float nx = dx / len;
         float ny = dy / len;
         float nz = dz / len;

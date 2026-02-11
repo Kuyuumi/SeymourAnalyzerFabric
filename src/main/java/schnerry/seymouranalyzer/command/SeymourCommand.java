@@ -581,8 +581,8 @@ public class SeymourCommand {
         ctx.getSource().sendFeedback(Text.literal("§7§lBy Tier:"));
         ctx.getSource().sendFeedback(Text.literal("  §c§lT1< §7(ΔE < 1.0): §e" + t0Count));
         ctx.getSource().sendFeedback(Text.literal("  §d§lT1 §7(1.0 ≤ ΔE < 2.0): §e" + t1Count));
-        ctx.getSource().sendFeedback(Text.literal("  §6§lT2 §7(2.0 ≤ ΔE < 3.0): §e" + t2Count));
-        ctx.getSource().sendFeedback(Text.literal("  §7§lT3+ §7(ΔE ≥ 3.0): §e" + t3PlusCount));
+        ctx.getSource().sendFeedback(Text.literal("  §6§lT2 §7(2.0 ≤ ΔE < 5.0): §e" + t2Count));
+        ctx.getSource().sendFeedback(Text.literal("  §7§lT3+ §7(ΔE ≥ 5.0): §e" + t3PlusCount));
         if (noAnalysisCount > 0) {
             ctx.getSource().sendFeedback(Text.literal("  §8No Analysis: §7" + noAnalysisCount));
         }

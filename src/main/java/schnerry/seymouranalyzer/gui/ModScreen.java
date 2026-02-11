@@ -2,6 +2,7 @@ package schnerry.seymouranalyzer.gui;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.Click;
 import net.minecraft.text.Text;
 
 /**
@@ -51,42 +52,42 @@ public abstract class ModScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(Click click, boolean isOutOfBounds) {
         // Middle mouse button (button 2) activates scrolling mode
-        if (button == 2) {
+        if (click.button() == 2) {
             isMiddleMouseScrolling = true;
-            lastMiddleMouseY = mouseY;
+            lastMiddleMouseY = click.y();
             return true;
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, isOutOfBounds);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+    public boolean mouseDragged(Click click, double deltaX, double deltaY) {
         // Handle middle mouse scrolling
-        if (isMiddleMouseScrolling && button == 2) {
-            double mouseDelta = lastMiddleMouseY - mouseY;
-            lastMiddleMouseY = mouseY;
+        if (isMiddleMouseScrolling && click.button() == 2) {
+            double mouseDelta = lastMiddleMouseY - click.y();
+            lastMiddleMouseY = click.y();
 
             // Convert mouse movement to scroll amount
             if (Math.abs(mouseDelta) > 0.1) {
                 double scrollAmount = mouseDelta * MIDDLE_MOUSE_SENSITIVITY;
                 // Trigger scroll events
-                mouseScrolled(mouseX, mouseY, 0, scrollAmount);
+                mouseScrolled(click.x(), click.y(), 0, scrollAmount);
             }
             return true;
         }
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, deltaX, deltaY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(Click click) {
         // Release middle mouse scrolling
-        if (button == 2 && isMiddleMouseScrolling) {
+        if (click.button() == 2 && isMiddleMouseScrolling) {
             isMiddleMouseScrolling = false;
             return true;
         }
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 }
 

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.Click;
 import net.minecraft.text.Text;
 import schnerry.seymouranalyzer.Seymouranalyzer;
 import schnerry.seymouranalyzer.config.ClothConfig;
@@ -132,7 +133,7 @@ public class ArmorChecklistScreen extends ModScreen {
             loadCustomColors();
 
             // Build fade dye page order from fade dye categories
-            String[] fadeDyes = {"Aurora", "Black Ice", "Frog", "Lava", "Lucky", "Marine",
+            String[] fadeDyes = {"Aurora", "Black Ice", "Frog", "Hellebore", "Kingfisher", "Lava", "Lucky", "Marine",
                                 "Oasis", "Ocean", "Pastel Sky", "Portal", "Red Tulip", "Rose",
                                 "Snowflake", "Spooky", "Sunflower", "Sunset", "Warden"};
             for (String fadeDye : fadeDyes) {
@@ -580,12 +581,12 @@ public class ArmorChecklistScreen extends ModScreen {
         int buttonSpacing = 10;
 
         if (fadeDyeMode) {
-            // Fade dye mode: 2 rows of 9 and 8 buttons (17 total)
+            // Fade dye mode: 2 rows of 10 and 9 buttons (19 total)
             int row1Y = this.height - 60;
             int row2Y = this.height - 35;
-            int buttonsPerRow1 = 9;
+            int buttonsPerRow1 = 10;
 
-            // Row 1: 9 buttons
+            // Row 1: 10 buttons
             for (int i = 0; i < Math.min(buttonsPerRow1, pageOrder.size()); i++) {
                 int pageIndex = i;
                 String categoryName = pageOrder.get(i);
@@ -606,7 +607,7 @@ public class ArmorChecklistScreen extends ModScreen {
 
             // Row 2: remaining buttons
             int row2Start = buttonsPerRow1;
-            int row2Count = Math.min(8, pageOrder.size() - row2Start);
+            int row2Count = Math.min(9, pageOrder.size() - row2Start);
 
             for (int i = 0; i < row2Count; i++) {
                 int pageIndex = row2Start + i;
@@ -688,6 +689,8 @@ public class ArmorChecklistScreen extends ModScreen {
             case "Custom" -> "Custom";
             // Fade dye abbreviations
             case "Black Ice" -> "BIce";
+            case "Hellebore" -> "Helle";
+            case "Kingfisher" -> "Kingf";
             case "Pastel Sky" -> "PSky";
             case "Red Tulip" -> "RTulip";
             case "Snowflake" -> "Snowf";
@@ -921,14 +924,18 @@ public class ArmorChecklistScreen extends ModScreen {
                 context.fill(boxX, y, boxX + 100, y + 20, qualityColor);
 
                 // Show piece name and delta to row hex
-                String pieceHexAndDelta = match.getHexcode().concat(" - ").concat(String.format("ΔE: %.1f", deltaE));
+                String pieceHexAndDelta = match.getHexcode().concat(" - ").concat(String.format("ΔE: %.2f", deltaE));
                 context.drawTextWithShadow(this.textRenderer, pieceHexAndDelta, boxX + 3, y + 6, 0xFFFFFFFF);
             }
         }
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(Click click, boolean isOutOfBounds) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         // Check context menu clicks first
         if (contextMenu != null) {
             if (handleContextMenuClick(mouseX, mouseY, button)) {
@@ -980,7 +987,7 @@ public class ArmorChecklistScreen extends ModScreen {
             return true;
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, isOutOfBounds);
     }
 
     private boolean handleRightClick(double mouseX, double mouseY) {
@@ -1157,8 +1164,8 @@ public class ArmorChecklistScreen extends ModScreen {
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-        if (isDraggingScrollbar && button == 0) {
+    public boolean mouseDragged(Click click, double deltaX, double deltaY) {
+        if (isDraggingScrollbar && click.button() == 0) {
             if (pageOrder.isEmpty() || currentPage >= pageOrder.size()) {
                 isDraggingScrollbar = false;
                 return false;
@@ -1174,7 +1181,7 @@ public class ArmorChecklistScreen extends ModScreen {
                 int scrollbarHeight = maxVisible * ROW_HEIGHT;
 
                 int maxScroll = Math.max(0, entries.size() - maxVisible);
-                scrollOffset = ScrollbarRenderer.calculateScrollFromDrag(mouseY, scrollbarY, scrollbarHeight,
+                scrollOffset = ScrollbarRenderer.calculateScrollFromDrag(click.y(), scrollbarY, scrollbarHeight,
                     entries.size(), maxVisible);
                 scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset));
             }
@@ -1182,17 +1189,17 @@ public class ArmorChecklistScreen extends ModScreen {
             return true;
         }
 
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(click, deltaX, deltaY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (button == 0 && isDraggingScrollbar) {
+    public boolean mouseReleased(Click click) {
+        if (click.button() == 0 && isDraggingScrollbar) {
             isDraggingScrollbar = false;
             return true;
         }
 
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     @Override

@@ -4,6 +4,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 import schnerry.seymouranalyzer.config.ConfigScreen;
 import schnerry.seymouranalyzer.gui.DatabaseScreen;
@@ -12,6 +13,10 @@ import schnerry.seymouranalyzer.gui.DatabaseScreen;
  * Keybinding to open GUIs - alternative to commands
  */
 public class KeyBindings {
+
+    // 1.21.9+: Categories must be created as KeyBinding.Category objects
+    private static final KeyBinding.Category SEYMOURANALYZER_CATEGORY =
+        KeyBinding.Category.create(Identifier.of("seymouranalyzer", "main"));
 
     private static KeyBinding openDatabaseGuiKey;
     private static KeyBinding openConfigGuiKey;
@@ -22,7 +27,7 @@ public class KeyBindings {
             "key.seymouranalyzer.opendatabasegui",
             InputUtil.Type.KEYSYM,
             GLFW.GLFW_KEY_P,
-            "category.seymouranalyzer"
+            SEYMOURANALYZER_CATEGORY
         ));
 
         // I for Config GUI
@@ -30,7 +35,7 @@ public class KeyBindings {
             "key.seymouranalyzer.openconfiggui",
             InputUtil.Type.KEYSYM,
             GLFW.GLFW_KEY_I,
-            "category.seymouranalyzer"
+            SEYMOURANALYZER_CATEGORY
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {

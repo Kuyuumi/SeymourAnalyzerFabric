@@ -3,6 +3,7 @@ package schnerry.seymouranalyzer.gui;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.Click;
 import net.minecraft.text.Text;
 import schnerry.seymouranalyzer.data.ArmorPiece;
 import schnerry.seymouranalyzer.data.CollectionManager;
@@ -209,7 +210,11 @@ public class BestSetsScreen extends ModScreen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(Click click, boolean isOutOfBounds) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        int button = click.button();
+
         // Handle context menu
         if (contextMenu != null) {
             if (button == 0) {
@@ -227,7 +232,7 @@ public class BestSetsScreen extends ModScreen {
             return true;
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, isOutOfBounds);
     }
 
     private void handleHexRightClick(double mouseX, double mouseY) {
